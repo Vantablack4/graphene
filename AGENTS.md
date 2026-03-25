@@ -10,7 +10,7 @@ Here is the structure of the repository:
 
 ```text
 /
-├── libs-src/                           # Unpacked dependency sources for browsing and reference.
+├── references/                           # Unpacked dependency sources for browsing and reference.
 │   ├── fabric/
 │   ├── minecraft/
 │   └── <lib-name>/
@@ -32,7 +32,6 @@ Here is the structure of the repository:
 ## General Coding Conventions
 
 - Target Java 21, use 4-space indentation, and keep packages under `tytoo.grapheneui*`.
-- Use PascalCase for classes, camelCase for methods and fields, and UPPER_SNAKE_CASE for constants.
 - Prefer explicit types instead of `var`, and use descriptive names rather than one-letter identifiers.
 - Keep member order consistent in Java classes: static constants, static fields, instance fields, constructors, overridden
   methods, public methods, protected and private helper methods, then getters and setters at the bottom.
@@ -73,9 +72,9 @@ Here is the structure of the repository:
 
 - Fabric Loader and Fabric API are versioned in `gradle.properties`; Fabric Loom integrates official Mojang mappings
   into the client source set and remaps game classes during packaging. Keep these aligned with Minecraft `1.21.11` before updating APIs.
-- `me.tytoo:jcefgithub` is this project's own JCEF library, published on GitHub Packages; browse its unpacked sources in `libs-src/`.
+- `me.tytoo:jcefgithub` is this project's own JCEF library, published on GitHub Packages; browse its unpacked sources in `references/`.
 - Library sources are fetched through the `sourceDeps` configuration (see `build.gradle.kts`) and unpacked per library
-  using `./gradlew unpackSources` into `libs-src/<library>`. Use these sources to explore library source code.
+  using `./gradlew unpackSources` into `references/<library>`. Use these sources to explore library source code.
 
 ## Pull Requests & Commits
 

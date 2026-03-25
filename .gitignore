@@ -41,7 +41,7 @@ replay_*.log
 *.jfr
 
 # Other
-libs-src/
+references/
 .agent_frame/
 .ignore
 notes.md

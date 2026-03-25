@@ -261,19 +261,19 @@ signing {
 
 // Source Browsing Helpers
 
-val unpackedSourcesDir: Directory = layout.projectDirectory.dir("libs-src")
+val unpackedSourcesDir: Directory = layout.projectDirectory.dir("references")
 val minecraftCacheDirProvider: Directory = layout.projectDirectory.dir(".gradle/loom-cache/minecraftMaven")
 val fabricCacheDirProvider: Directory = layout.projectDirectory.dir(".gradle/loom-cache/remapped_mods/remapped/net/fabricmc/fabric-api")
 
 val cleanSources by tasks.registering(Delete::class) {
 	group = "help"
-	description = "Deletes unpacked sources in libs-src/"
+	description = "Deletes unpacked sources in references/"
 	delete(unpackedSourcesDir)
 }
 
 val unpackSources by tasks.registering(UnpackSourcesTask::class) {
 	group = "help"
-	description = "Unpacks dependency sources and clones git repos into libs-src/"
+	description = "Unpacks dependency sources and clones git repos into references/"
 	dependsOn(cleanSources)
 	sourceDeps.from(configurations.named("sourceDeps"))
 	gitRepos.set(
