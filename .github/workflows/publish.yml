@@ -27,15 +27,15 @@ jobs:
       tag: ${{ steps.metadata.outputs.tag }}
     steps:
       - name: checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: validate gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v6
 
       - name: setup jdk
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'microsoft'
@@ -193,7 +193,7 @@ jobs:
 
       - name: capture github release artifacts
         if: steps.targets.outputs.publish_github == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: github-release-assets
           if-no-files-found: error
@@ -204,7 +204,7 @@ jobs:
 
       - name: capture maven central bundle
         if: steps.targets.outputs.publish_maven == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: maven-central-bundle
           if-no-files-found: error
@@ -216,19 +216,30 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: download release assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: github-release-assets
           path: release-assets
 
       - name: create github release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.build.outputs.tag }}
-          name: Graphene ${{ needs.build.outputs.mod_version }}
-          body_path: release-assets/release-notes.md
-          files: |
-            release-assets/**/*.jar
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          RELEASE_NAME: Graphene ${{ needs.build.outputs.mod_version }}
+          RELEASE_TARGET: ${{ github.sha }}
+        run: |
+          shopt -s nullglob
+          release_files=(release-assets/*.jar)
+
+          if [ ${#release_files[@]} -eq 0 ]; then
+            echo "Expected at least one release artifact in release-assets/." >&2
+            exit 1
+          fi
+
+          gh release create "${RELEASE_TAG}" "${release_files[@]}" \
+            --target "${RELEASE_TARGET}" \
+            --title "${RELEASE_NAME}" \
+            --notes-file release-assets/release-notes.md
 
   publish-maven:
     needs: build
@@ -236,7 +247,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: download maven central bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: maven-central-bundle
           path: maven-central
