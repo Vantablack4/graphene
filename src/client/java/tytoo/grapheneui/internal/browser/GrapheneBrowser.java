@@ -27,6 +27,7 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     private final GrapheneBrowserGpuRenderer renderer;
     private final boolean transparent;
     private final GrapheneInputBridge inputBridge = new GrapheneInputBridge();
+    private final GrapheneDomMouseDispatcher mouseDispatcher = new GrapheneDomMouseDispatcher(this);
     private final GrapheneDomKeyboardDispatcher keyboardDispatcher = new GrapheneDomKeyboardDispatcher(this);
     private final GraphenePaintBuffer paintBuffer = new GraphenePaintBuffer();
     private final GrapheneFocusUtil focusUtil = new GrapheneFocusUtil(this::setNativeFocus);
@@ -313,6 +314,10 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
 
     public void mouseInteracted(int x, int y, int modifiers, int button, boolean pressed, int clickCount) {
         inputBridge.mouseInteracted(this, x, y, modifiers, button, pressed, clickCount);
+    }
+
+    public void navigationButtonInteracted(int x, int y, int modifiers, int button, boolean pressed, int clickCount, int buttons) {
+        mouseDispatcher.navigationButtonInteracted(x, y, modifiers, button, pressed, clickCount, buttons);
     }
 
     public void mouseScrolled(int x, int y, int modifiers, int amount, int rotation) {

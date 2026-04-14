@@ -1,7 +1,6 @@
 package tytoo.grapheneui.internal.browser;
 
 import com.google.gson.JsonObject;
-import org.cef.browser.CefDevToolsClient;
 import org.lwjgl.glfw.GLFW;
 import tytoo.grapheneui.internal.input.GrapheneInputModifierUtil;
 import tytoo.grapheneui.internal.input.keyboard.GrapheneDomKeyData;
@@ -34,7 +33,7 @@ final class GrapheneDomKeyboardDispatcher {
     private static final String PROPERTY_LOCATION = "location";
     private static final GrapheneDebugLogger DEBUG_LOGGER = GrapheneDebugLogger.of(GrapheneDomKeyboardDispatcher.class);
 
-    private final GrapheneBrowser browser;
+    private final GrapheneDevToolsMethodExecutor devToolsMethodExecutor;
     private final GrapheneDomKeyboardMapper keyboardMapper = new GrapheneDomKeyboardMapper();
     private final GrapheneInputLockState lockState = new GrapheneInputLockState();
     private final Set<Integer> pressedKeys = new HashSet<>();
@@ -44,7 +43,7 @@ final class GrapheneDomKeyboardDispatcher {
     private boolean rightAltPressed;
 
     GrapheneDomKeyboardDispatcher(GrapheneBrowser browser) {
-        this.browser = Objects.requireNonNull(browser, "browser");
+        this.devToolsMethodExecutor = new GrapheneDevToolsMethodExecutor(Objects.requireNonNull(browser, "browser"));
     }
 
     void keyPressed(int keyCode, int scanCode, int modifiers) {
@@ -145,17 +144,7 @@ final class GrapheneDomKeyboardDispatcher {
     }
 
     private void executeDevToolsMethod(String method, JsonObject payload) {
-        CefDevToolsClient devToolsClient = browser.getDevToolsClient();
-        if (devToolsClient == null) {
-            DEBUG_LOGGER.debug("Skipping DevTools input dispatch because the client is not available: {}", method);
-            return;
-        }
-
-        DEBUG_LOGGER.debug("Dispatching DevTools input method {} with payload {}", method, payload);
-        devToolsClient.executeDevToolsMethod(method, payload.toString()).exceptionally(throwable -> {
-            DEBUG_LOGGER.debug("DevTools input dispatch failed for " + method, throwable);
-            return null;
-        });
+        devToolsMethodExecutor.executeMethod(method, payload, DEBUG_LOGGER);
     }
 
     private void rememberSyntheticText(String text) {

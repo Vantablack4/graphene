@@ -1,0 +1,19 @@
+body {
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 1rem;
+    margin: 1rem;
+    line-height: 1.5;
+    color: black;
+    padding: 0.5rem;
+    border-radius: 1em;
+}
+
+tr, #response-log {
+    background-color: white;
+}
+
+tr {
+    border: medium black;
+}
+
+

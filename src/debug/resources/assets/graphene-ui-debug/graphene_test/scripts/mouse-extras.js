@@ -9,8 +9,8 @@
         return document.getElementById("details");
     }
 
-    function renderSnapshot(mouseApi) {
-        const snapshot = mouseApi.snapshot();
+    function renderSnapshot(mouseExtrasApi) {
+        const snapshot = mouseExtrasApi.snapshot();
         const lastEvent = snapshot.lastEvent
             ? ("button=" + snapshot.lastEvent.button + ", pressed=" + snapshot.lastEvent.pressed)
             : "none";
@@ -21,17 +21,17 @@
             "Last event: " + lastEvent;
     }
 
-    function renderMouseEvent(mouseApi, eventPayload) {
+    function renderMouseEvent(mouseExtrasApi, eventPayload) {
         const action = eventPayload.pressed ? "pressed" : "released";
         statusElement().innerHTML =
             "<span class=\"ok\">Bridge connected:</span> button " + eventPayload.button + " " + action;
-        renderSnapshot(mouseApi);
+        renderSnapshot(mouseExtrasApi);
     }
 
-    function connectMouseBridgeWhenAvailable() {
-        const mouseApi = globalThis.grapheneMouse;
-        if (!mouseApi || typeof mouseApi.on !== "function" || typeof mouseApi.snapshot !== "function") {
-            setTimeout(connectMouseBridgeWhenAvailable, 50);
+    function connectMouseExtrasWhenAvailable() {
+        const mouseExtrasApi = globalThis.grapheneMouseExtras;
+        if (!mouseExtrasApi || typeof mouseExtrasApi.on !== "function" || typeof mouseExtrasApi.snapshot !== "function") {
+            setTimeout(connectMouseExtrasWhenAvailable, 50);
             return;
         }
 
@@ -39,12 +39,12 @@
             removeListener();
         }
 
-        statusElement().innerHTML = "<span class=\"ok\">Bridge connected:</span> press a side mouse button";
-        renderSnapshot(mouseApi);
-        removeListener = mouseApi.on(function (eventPayload) {
-            renderMouseEvent(mouseApi, eventPayload);
+        statusElement().innerHTML = "<span class=\"ok\">Bridge connected:</span> press an extra mouse button";
+        renderSnapshot(mouseExtrasApi);
+        removeListener = mouseExtrasApi.on(function (eventPayload) {
+            renderMouseEvent(mouseExtrasApi, eventPayload);
         });
     }
 
-    connectMouseBridgeWhenAvailable();
+    connectMouseExtrasWhenAvailable();
 })();

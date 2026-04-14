@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <title>Graphene Mouse Navigation Prevent Default Test</title>
+    <link href="../styles/style.css" rel="stylesheet">
+    <script defer src="../scripts/mouse-navigation-prevent-default.js"></script>
+</head>
+<body>
+<h1>Mouse Navigation Prevent Default</h1>
+<p><a href="tests.html">Back to tests page</a></p>
+<p>This page checks whether DOM button 3 and 4 can be captured with <code>preventDefault()</code>.</p>
+
+<div>
+    <label><input checked id="prevent-non-primary" type="checkbox"> preventDefault for non-primary mouse buttons</label>
+    <button id="push-state" type="button">Push history state</button>
+</div>
+
+<pre id="status">Waiting for input...</pre>
+
+<div>
+    <button autofocus id="capture-target" type="button">Focus this button, then press mouse back or forward</button>
+    <p class="muted">Checked -> events should log without history navigation. Unchecked -> history should move if
+        available.</p>
+</div>
+
+<div>
+    <h2>Event log</h2>
+    <pre id="event-log">No events yet.</pre>
+</div>
+</body>
+</html>
