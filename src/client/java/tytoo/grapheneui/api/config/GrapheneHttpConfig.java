@@ -48,8 +48,8 @@ public final class GrapheneHttpConfig {
             throw new IllegalArgumentException("baseUrlScheme must not be blank");
         }
 
-        if (!normalizedBaseUrlScheme.equalsIgnoreCase("http") && !normalizedBaseUrlScheme.equalsIgnoreCase("https")) {
-            throw new IllegalArgumentException("baseUrlScheme must be either http or https");
+        if (!normalizedBaseUrlScheme.equalsIgnoreCase("http")) {
+            throw new IllegalArgumentException("baseUrlScheme must be http");
         }
 
         return normalizedBaseUrlScheme.toLowerCase(Locale.ROOT);

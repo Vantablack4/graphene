@@ -4,7 +4,6 @@ import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
 import org.cef.handler.CefLoadHandler;
 import org.cef.network.CefRequest;
-import tytoo.grapheneui.api.surface.BrowserSurface;
 import tytoo.grapheneui.api.surface.GrapheneLoadListener;
 import tytoo.grapheneui.internal.event.GrapheneLoadEventBus;
 
@@ -21,11 +20,6 @@ public final class BrowserSurfaceLoadListenerScope implements AutoCloseable {
     public BrowserSurfaceLoadListenerScope(GrapheneBrowser browser, GrapheneLoadEventBus loadEventBus) {
         this.browser = Objects.requireNonNull(browser, "browser");
         this.loadEventBus = Objects.requireNonNull(loadEventBus, "loadEventBus");
-    }
-
-    public BrowserSurface.Subscription subscribe(GrapheneLoadListener loadListener) {
-        add(loadListener);
-        return () -> remove(loadListener);
     }
 
     public void add(GrapheneLoadListener loadListener) {

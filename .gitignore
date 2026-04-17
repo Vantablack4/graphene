@@ -41,6 +41,7 @@ replay_*.log
 *.jfr
 
 # Other
+logs/
 references/
 .agent_frame/
 .ignore

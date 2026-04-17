@@ -6,6 +6,7 @@ import tytoo.grapheneui.internal.bridge.GrapheneBridgeRuntime;
 import tytoo.grapheneui.internal.cef.alert.GrapheneFolderUploadDialogManager;
 import tytoo.grapheneui.internal.cef.alert.GrapheneJsDialogManager;
 import tytoo.grapheneui.internal.event.GrapheneLoadEventBus;
+import tytoo.grapheneui.internal.event.GrapheneTitleEventBus;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 
 import java.util.Objects;
@@ -16,9 +17,15 @@ public final class GrapheneCefClientConfig {
     private GrapheneCefClientConfig() {
     }
 
-    public static void configure(CefClient cefClient, GrapheneLoadEventBus loadEventBus, GrapheneBridgeRuntime bridgeRuntime) {
+    public static void configure(
+            CefClient cefClient,
+            GrapheneLoadEventBus loadEventBus,
+            GrapheneTitleEventBus titleEventBus,
+            GrapheneBridgeRuntime bridgeRuntime
+    ) {
         CefClient validatedClient = Objects.requireNonNull(cefClient, "cefClient");
         GrapheneLoadEventBus validatedLoadEventBus = Objects.requireNonNull(loadEventBus, "loadEventBus");
+        GrapheneTitleEventBus validatedTitleEventBus = Objects.requireNonNull(titleEventBus, "titleEventBus");
         GrapheneBridgeRuntime validatedBridgeRuntime = Objects.requireNonNull(bridgeRuntime, "bridgeRuntime");
         GrapheneJsDialogManager jsDialogManager = new GrapheneJsDialogManager();
         GrapheneFolderUploadDialogManager folderUploadDialogManager = new GrapheneFolderUploadDialogManager();
@@ -27,7 +34,7 @@ public final class GrapheneCefClientConfig {
         GrapheneCefRequestHandler requestHandler = new GrapheneCefRequestHandler();
 
         validatedClient.addLoadHandler(new GrapheneCefLoadHandler(validatedLoadEventBus, validatedBridgeRuntime));
-        validatedClient.addDisplayHandler(new GrapheneCefDisplayHandler());
+        validatedClient.addDisplayHandler(new GrapheneCefDisplayHandler(validatedTitleEventBus));
         validatedClient.addContextMenuHandler(new GrapheneCefContextMenuHandler());
         validatedClient.addJSDialogHandler(new GrapheneCefJsDialogHandler(jsDialogManager));
         validatedClient.addDialogHandler(new GrapheneCefFileDialogHandler(folderUploadDialogManager));

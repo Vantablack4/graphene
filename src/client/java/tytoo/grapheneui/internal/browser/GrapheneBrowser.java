@@ -30,11 +30,11 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     private final GrapheneDomMouseDispatcher mouseDispatcher = new GrapheneDomMouseDispatcher(this);
     private final GrapheneDomKeyboardDispatcher keyboardDispatcher = new GrapheneDomKeyboardDispatcher(this);
     private final GraphenePaintBuffer paintBuffer = new GraphenePaintBuffer();
-    private final GrapheneFocusUtil focusUtil = new GrapheneFocusUtil(this::setNativeFocus);
     private final Object dragSessionLock = new Object();
     private final Rectangle browserRect = new Rectangle(0, 0, 1, 1);
     private final Point screenPoint = new Point(0, 0);
     private volatile int cursorType = Cursor.DEFAULT_CURSOR;
+    private volatile String currentTitle = "";
     private CefDragData activeDragData;
     private int activeDragMask = CefDragData.DragOperations.DRAG_OPERATION_NONE;
     private boolean dragTargetEntered;
@@ -209,11 +209,6 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     }
 
     @Override
-    public void setFocus(boolean enable) {
-        focusUtil.setFocused(enable);
-    }
-
-    @Override
     protected CefBrowserWindowless createDevToolsBrowserWindowless(
             CefClient client,
             String url,
@@ -348,10 +343,6 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
         sendCefMouseWheelEvent(event);
     }
 
-    public void onTitleChange(String ignoredTitle) {
-        // Title changes are currently not surfaced through Graphene's browser surface API.
-    }
-
     public CursorType getRequestedCursor() {
         return switch (cursorType) {
             case Cursor.CROSSHAIR_CURSOR -> CursorTypes.CROSSHAIR;
@@ -390,8 +381,18 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
         return currentUrl;
     }
 
-    private void setNativeFocus(boolean enable) {
-        super.setFocus(enable);
+    public String currentTitle() {
+        return currentTitle;
+    }
+
+    public boolean updateTitle(String title) {
+        String normalizedTitle = title == null ? "" : title;
+        if (currentTitle.equals(normalizedTitle)) {
+            return false;
+        }
+
+        currentTitle = normalizedTitle;
+        return true;
     }
 
     private void createBrowserIfRequired() {

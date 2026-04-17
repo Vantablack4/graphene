@@ -74,10 +74,19 @@ final class GrapheneHttpConfigTest {
     @Test
     void baseUrlSchemeCanBeConfigured() {
         GrapheneHttpConfig config = GrapheneHttpConfig.builder()
-                .baseUrlScheme("https")
+                .baseUrlScheme("HTTP")
                 .build();
 
-        assertEquals("https", config.baseUrlScheme());
+        assertEquals("http", config.baseUrlScheme());
+    }
+
+    @Test
+    void httpsBaseUrlSchemeIsRejected() {
+        GrapheneHttpConfig.Builder builder = GrapheneHttpConfig.builder();
+
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> builder.baseUrlScheme("https"));
+
+        assertEquals("baseUrlScheme must be http", exception.getMessage());
     }
 
     @Test

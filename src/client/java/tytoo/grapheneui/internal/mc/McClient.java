@@ -3,8 +3,6 @@ package tytoo.grapheneui.internal.mc;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Overlay;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.renderer.texture.DynamicTexture;
-import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFWNativeCocoa;
 import org.lwjgl.glfw.GLFWNativeWin32;
 import org.lwjgl.glfw.GLFWNativeX11;
@@ -15,7 +13,7 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
-@SuppressWarnings({"resource", "java:S2095", "unused"})
+@SuppressWarnings({"resource", "java:S2095"})
 public final class McClient {
     private static final long NO_WINDOW_HANDLE = 0L;
     private static final GrapheneDebugLogger DEBUG_LOGGER = GrapheneDebugLogger.of(McClient.class);
@@ -29,10 +27,6 @@ public final class McClient {
 
     public static void execute(Runnable runnable) {
         mc().execute(Objects.requireNonNull(runnable, "runnable"));
-    }
-
-    public static boolean isOnMainThread() {
-        return mc().isSameThread();
     }
 
     public static void runOnMainThread(Runnable runnable) {
@@ -115,13 +109,5 @@ public final class McClient {
         }
 
         return NO_WINDOW_HANDLE;
-    }
-
-    public static void registerTexture(Identifier textureId, DynamicTexture dynamicTexture) {
-        mc().getTextureManager().register(textureId, dynamicTexture);
-    }
-
-    public static void releaseTexture(Identifier textureId) {
-        mc().getTextureManager().release(textureId);
     }
 }

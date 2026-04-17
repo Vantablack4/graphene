@@ -5,12 +5,12 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import org.cef.CefBrowserSettings;
-import org.cef.CefClient;
 import org.cef.browser.CefRequestContext;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceLoadListenerScope;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceSizingState;
+import tytoo.grapheneui.internal.browser.BrowserSurfaceTitleListenerScope;
 import tytoo.grapheneui.internal.browser.GrapheneBrowser;
 import tytoo.grapheneui.internal.core.GrapheneCoreServices;
 import tytoo.grapheneui.internal.mc.McWindowScale;
@@ -42,6 +42,7 @@ public final class BrowserSurface implements AutoCloseable {
     private final GrapheneBridge bridge;
     private final BrowserSurfaceSizingState sizingState;
     private final BrowserSurfaceLoadListenerScope loadListenerScope;
+    private final BrowserSurfaceTitleListenerScope titleListenerScope;
     private final GrapheneCoreServices services;
     private boolean closed;
 
@@ -60,13 +61,12 @@ public final class BrowserSurface implements AutoCloseable {
 
         GrapheneCore.runtime();
 
-        CefClient cefClient = builder.client != null ? builder.client : services.runtimeInternal().requireClient();
-        CefRequestContext requestContext = builder.requestContext != null ? builder.requestContext : CefRequestContext.getGlobalContext();
+        CefRequestContext requestContext = CefRequestContext.getGlobalContext();
         builder.requestContextCustomizer.accept(requestContext);
         BrowserSurfaceConfig config = builder.config != null ? builder.config : BrowserSurfaceConfig.defaults();
 
         this.browser = new GrapheneBrowser(
-                cefClient,
+                services.runtimeInternal().requireClient(),
                 builder.url,
                 builder.transparent,
                 requestContext,
@@ -75,6 +75,7 @@ public final class BrowserSurface implements AutoCloseable {
         this.bridge = services.runtimeInternal().attachBridge(this.browser);
         this.browser.createImmediately();
         this.loadListenerScope = new BrowserSurfaceLoadListenerScope(this.browser, services.runtimeInternal().getLoadEventBus());
+        this.titleListenerScope = new BrowserSurfaceTitleListenerScope(this.browser, services.runtimeInternal().getTitleEventBus());
         this.browser.wasResizedTo(sizingState.resolutionWidth(), sizingState.resolutionHeight());
         if (builder.owner != null) {
             services.surfaceManager().register(builder.owner, this);
@@ -89,71 +90,96 @@ public final class BrowserSurface implements AutoCloseable {
         return browser;
     }
 
+    public boolean isClosed() {
+        return closed;
+    }
+
     public GrapheneBridge bridge() {
+        ensureOpen();
         return bridge;
     }
 
     public boolean canGoBack() {
+        ensureOpen();
         return browser.canGoBack();
     }
 
     public boolean canGoForward() {
+        ensureOpen();
         return browser.canGoForward();
     }
 
     public boolean isLoading() {
+        ensureOpen();
         return browser.isLoading();
     }
 
     public CursorType getRequestedCursor() {
+        ensureOpen();
         return browser.getRequestedCursor();
     }
 
     public String currentUrl() {
+        ensureOpen();
         return browser.currentUrl();
     }
 
+    public String currentTitle() {
+        ensureOpen();
+        return browser.currentTitle();
+    }
+
     public void loadUrl(String url) {
+        ensureOpen();
         services.runtimeInternal().onNavigationRequested(browser);
         browser.loadURL(url);
     }
 
     public void goBack() {
+        ensureOpen();
         services.runtimeInternal().onNavigationRequested(browser);
         browser.goBack();
     }
 
     public void goForward() {
+        ensureOpen();
         services.runtimeInternal().onNavigationRequested(browser);
         browser.goForward();
     }
 
     public void reload() {
+        ensureOpen();
         services.runtimeInternal().onNavigationRequested(browser);
         browser.reload();
     }
 
     public int getSurfaceWidth() {
+        ensureOpen();
         return sizingState.surfaceWidth();
     }
 
     public int getSurfaceHeight() {
+        ensureOpen();
         return sizingState.surfaceHeight();
     }
 
     public int getResolutionWidth() {
+        ensureOpen();
         return sizingState.resolutionWidth();
     }
 
     public int getResolutionHeight() {
+        ensureOpen();
         return sizingState.resolutionHeight();
     }
 
     public Rectangle getViewBox() {
+        ensureOpen();
         return sizingState.viewBox();
     }
 
     public boolean isAutoResolution() {
+        ensureOpen();
         return sizingState.isAutoResolution();
     }
 
@@ -163,22 +189,44 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     public void clearOwner() {
+        ensureOpen();
         services.surfaceManager().unregister(this);
     }
 
     public Subscription subscribeLoadListener(GrapheneLoadListener loadListener) {
-        return loadListenerScope.subscribe(loadListener);
+        ensureOpen();
+        loadListenerScope.add(loadListener);
+        return () -> loadListenerScope.remove(loadListener);
     }
 
     public void addLoadListener(GrapheneLoadListener loadListener) {
+        ensureOpen();
         loadListenerScope.add(loadListener);
     }
 
     public void removeLoadListener(GrapheneLoadListener loadListener) {
+        ensureOpen();
         loadListenerScope.remove(loadListener);
     }
 
+    public Subscription subscribeTitleListener(GrapheneTitleListener titleListener) {
+        ensureOpen();
+        titleListenerScope.add(titleListener);
+        return () -> titleListenerScope.remove(titleListener);
+    }
+
+    public void addTitleListener(GrapheneTitleListener titleListener) {
+        ensureOpen();
+        titleListenerScope.add(titleListener);
+    }
+
+    public void removeTitleListener(GrapheneTitleListener titleListener) {
+        ensureOpen();
+        titleListenerScope.remove(titleListener);
+    }
+
     public void setSurfaceSize(int width, int height) {
+        ensureOpen();
         BrowserSurfaceSizingState.ResizeInstruction resizeInstruction = sizingState.setSurfaceSize(
                 width,
                 height,
@@ -189,11 +237,13 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     public void setResolution(int width, int height) {
+        ensureOpen();
         BrowserSurfaceSizingState.ResizeInstruction resizeInstruction = sizingState.setResolution(width, height);
         applyResizeInstruction(resizeInstruction);
     }
 
     public void useAutoResolution() {
+        ensureOpen();
         BrowserSurfaceSizingState.ResizeInstruction resizeInstruction = sizingState.useAutoResolution(
                 McWindowScale.getScaleX(),
                 McWindowScale.getScaleY()
@@ -202,30 +252,37 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     public void setViewBox(int x, int y, int width, int height) {
+        ensureOpen();
         sizingState.setViewBox(x, y, width, height);
     }
 
     public void resetViewBox() {
+        ensureOpen();
         sizingState.resetViewBox();
     }
 
     public Point toBrowserPoint(double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
+        ensureOpen();
         return sizingState.toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight);
     }
 
     public int toBrowserX(double surfaceX, int renderedWidth) {
+        ensureOpen();
         return sizingState.toBrowserX(surfaceX, renderedWidth);
     }
 
     public int toBrowserY(double surfaceY, int renderedHeight) {
+        ensureOpen();
         return sizingState.toBrowserY(surfaceY, renderedHeight);
     }
 
     public void render(GuiGraphics guiGraphics, int x, int y) {
+        ensureOpen();
         render(guiGraphics, x, y, sizingState.surfaceWidth(), sizingState.surfaceHeight());
     }
 
     public void render(GuiGraphics guiGraphics, int x, int y, int width, int height) {
+        ensureOpen();
         ProfilerFiller profiler = Profiler.get();
         profiler.push("graphene");
         try {
@@ -245,6 +302,7 @@ public final class BrowserSurface implements AutoCloseable {
         closed = true;
         services.surfaceManager().unregister(this);
         loadListenerScope.close();
+        titleListenerScope.close();
         services.runtimeInternal().detachBridge(browser);
         browser.close();
     }
@@ -310,8 +368,6 @@ public final class BrowserSurface implements AutoCloseable {
         private int resolutionWidth = MIN_SIZE;
         private int resolutionHeight = MIN_SIZE;
         private Rectangle viewBox;
-        private CefClient client;
-        private CefRequestContext requestContext;
         private Consumer<CefRequestContext> requestContextCustomizer = NO_OP_REQUEST_CONTEXT_CUSTOMIZER;
         private BrowserSurfaceConfig config = BrowserSurfaceConfig.defaults();
         private Object owner;
@@ -357,16 +413,6 @@ public final class BrowserSurface implements AutoCloseable {
 
         public Builder viewBox(int x, int y, int width, int height) {
             this.viewBox = new Rectangle(x, y, width, height);
-            return this;
-        }
-
-        public Builder client(CefClient client) {
-            this.client = Objects.requireNonNull(client, "client");
-            return this;
-        }
-
-        public Builder requestContext(CefRequestContext requestContext) {
-            this.requestContext = Objects.requireNonNull(requestContext, "requestContext");
             return this;
         }
 

@@ -9,28 +9,28 @@ final class GrapheneLinuxKeyEventPlatformResolverTest {
     private final GrapheneLinuxKeyEventPlatformResolver resolver = new GrapheneLinuxKeyEventPlatformResolver();
 
     @Test
-    void sanitizeCharEventModifiersLeavesModifiersWhenRightAltIsNotPressed() {
+    void sanitizeTextModifiersLeavesModifiersWhenRightAltIsNotPressed() {
         int modifiers = GLFW.GLFW_MOD_SHIFT | GLFW.GLFW_MOD_ALT;
 
-        int sanitizedModifiers = resolver.sanitizeCharEventModifiers(modifiers, false);
+        int sanitizedModifiers = resolver.sanitizeTextModifiers(modifiers, false);
 
         assertEquals(modifiers, sanitizedModifiers);
     }
 
     @Test
-    void sanitizeCharEventModifiersClearsAltGrControlAndAltModifiers() {
+    void sanitizeTextModifiersClearsAltGrControlAndAltModifiers() {
         int modifiers = GLFW.GLFW_MOD_SHIFT | GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT;
 
-        int sanitizedModifiers = resolver.sanitizeCharEventModifiers(modifiers, true);
+        int sanitizedModifiers = resolver.sanitizeTextModifiers(modifiers, true);
 
         assertEquals(GLFW.GLFW_MOD_SHIFT, sanitizedModifiers);
     }
 
     @Test
-    void sanitizeCharEventModifiersClearsAltWhenAltGrReportsNoControlModifier() {
+    void sanitizeTextModifiersClearsAltWhenAltGrReportsNoControlModifier() {
         int modifiers = GLFW.GLFW_MOD_SHIFT | GLFW.GLFW_MOD_ALT;
 
-        int sanitizedModifiers = resolver.sanitizeCharEventModifiers(modifiers, true);
+        int sanitizedModifiers = resolver.sanitizeTextModifiers(modifiers, true);
 
         assertEquals(GLFW.GLFW_MOD_SHIFT, sanitizedModifiers);
     }

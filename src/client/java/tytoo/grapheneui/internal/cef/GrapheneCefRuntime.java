@@ -22,6 +22,7 @@ import tytoo.grapheneui.internal.cef.startup.GrapheneCefStartupProgressHandler;
 import tytoo.grapheneui.internal.cef.startup.GrapheneNativeDownloadOverlay;
 import tytoo.grapheneui.internal.cef.startup.GrapheneNativeDownloadState;
 import tytoo.grapheneui.internal.event.GrapheneLoadEventBus;
+import tytoo.grapheneui.internal.event.GrapheneTitleEventBus;
 import tytoo.grapheneui.internal.http.GrapheneHttpServerRuntime;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 import tytoo.grapheneui.internal.mc.McClient;
@@ -51,6 +52,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
     private final Object lock = new Object();
     private final GrapheneBrowserSurfaceManager surfaceManager;
     private final GrapheneLoadEventBus loadEventBus = new GrapheneLoadEventBus();
+    private final GrapheneTitleEventBus titleEventBus = new GrapheneTitleEventBus();
     private final GrapheneBridgeRuntime bridgeRuntime;
     private boolean initialized;
     private boolean shutdownInProgress;
@@ -166,6 +168,10 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
 
     public GrapheneLoadEventBus getLoadEventBus() {
         return loadEventBus;
+    }
+
+    public GrapheneTitleEventBus getTitleEventBus() {
+        return titleEventBus;
     }
 
     public GrapheneBridge attachBridge(GrapheneBrowser browser) {
@@ -351,7 +357,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
     private void initializeClient(CefAppBuilder cefAppBuilder, GrapheneHttpServerRuntime startedHttpServer) {
         try {
             cefClient = cefApp.createClient();
-            GrapheneCefClientConfig.configure(cefClient, loadEventBus, bridgeRuntime);
+            GrapheneCefClientConfig.configure(cefClient, loadEventBus, titleEventBus, bridgeRuntime);
             int configuredRemoteDebugPort = cefAppBuilder.getCefSettings().remote_debugging_port;
             remoteDebuggingPort = configuredRemoteDebugPort > 0 ? configuredRemoteDebugPort : -1;
             httpServer = startedHttpServer;
@@ -468,6 +474,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
             closeSurfacesIfRequested(closeSurfaces);
             runShutdownStep(bridgeRuntime::shutdown, "Failed to shut down Graphene bridge runtime");
             runShutdownStep(loadEventBus::clear, "Failed to clear Graphene load event listeners");
+            runShutdownStep(titleEventBus::clear, "Failed to clear Graphene title event listeners");
             disposeNativeResources(resources);
             LOGGER.info("CEF runtime disposed ({})", trigger);
         } finally {
