@@ -31,6 +31,7 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     private final GrapheneDomKeyboardDispatcher keyboardDispatcher = new GrapheneDomKeyboardDispatcher(this);
     private final GraphenePaintBuffer paintBuffer = new GraphenePaintBuffer();
     private final Object dragSessionLock = new Object();
+    private final Object focusUpdateLock = new Object();
     private final Rectangle browserRect = new Rectangle(0, 0, 1, 1);
     private final Point screenPoint = new Point(0, 0);
     private volatile int cursorType = Cursor.DEFAULT_CURSOR;
@@ -38,6 +39,8 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     private CefDragData activeDragData;
     private int activeDragMask = CefDragData.DragOperations.DRAG_OPERATION_NONE;
     private boolean dragTargetEntered;
+    private boolean focusUpdateInProgress;
+    private boolean focusUpdateTarget;
     private boolean closed = false;
 
 
@@ -255,6 +258,31 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     public void wasResizedTo(int width, int height) {
         browserRect.setBounds(0, 0, width, height);
         super.wasResized(width, height);
+    }
+
+    @Override
+    public void setFocus(boolean enable) {
+        boolean previousInProgress;
+        boolean previousTarget;
+        synchronized (focusUpdateLock) {
+            if (focusUpdateInProgress && focusUpdateTarget == enable) {
+                return;
+            }
+
+            previousInProgress = focusUpdateInProgress;
+            previousTarget = focusUpdateTarget;
+            focusUpdateInProgress = true;
+            focusUpdateTarget = enable;
+        }
+
+        try {
+            super.setFocus(enable);
+        } finally {
+            synchronized (focusUpdateLock) {
+                focusUpdateInProgress = previousInProgress;
+                focusUpdateTarget = previousTarget;
+            }
+        }
     }
 
     public void mouseMoved(int x, int y, int modifiers) {
