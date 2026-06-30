@@ -3,6 +3,7 @@ package tytoo.grapheneui.internal.mc;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Overlay;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFWNativeCocoa;
@@ -119,6 +120,10 @@ public final class McClient {
 
     public static void registerTexture(Identifier textureId, DynamicTexture dynamicTexture) {
         mc().getTextureManager().register(textureId, dynamicTexture);
+    }
+
+    public static void registerTexture(Identifier textureId, AbstractTexture texture) {
+        mc().getTextureManager().register(textureId, texture);
     }
 
     public static void releaseTexture(Identifier textureId) {

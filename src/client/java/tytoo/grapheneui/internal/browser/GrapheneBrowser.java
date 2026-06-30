@@ -3,6 +3,7 @@ package tytoo.grapheneui.internal.browser;
 import com.mojang.blaze3d.platform.cursor.CursorType;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import tytoo.grapheneui.api.surface.BrowserSurfaceTextureFrame;
 import org.cef.CefBrowserSettings;
 import org.cef.CefClient;
 import org.cef.browser.CefBrowser;
@@ -249,6 +250,21 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
                 y,
                 width,
                 height,
+                sourceX,
+                sourceY,
+                sourceWidth,
+                sourceHeight
+        );
+    }
+
+    public BrowserSurfaceTextureFrame prepareMainFrameTexture(
+            int sourceX,
+            int sourceY,
+            int sourceWidth,
+            int sourceHeight
+    ) {
+        return renderer.prepareMainFrameTexture(
+                paintBuffer.snapshot(),
                 sourceX,
                 sourceY,
                 sourceWidth,

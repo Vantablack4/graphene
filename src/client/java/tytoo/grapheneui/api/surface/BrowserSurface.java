@@ -261,6 +261,21 @@ public final class BrowserSurface implements AutoCloseable {
         }
     }
 
+    public BrowserSurfaceTextureFrame prepareTextureFrame() {
+        if (closed) {
+            return null;
+        }
+
+        ProfilerFiller profiler = Profiler.get();
+        profiler.push("graphene");
+        try {
+            pushBootstrap(profiler);
+            return pushPrepareTextureFrame(profiler);
+        } finally {
+            profiler.pop();
+        }
+    }
+
     @Override
     public void close() {
         if (closed) {
@@ -315,6 +330,20 @@ public final class BrowserSurface implements AutoCloseable {
                     height,
                     sizingState.resolutionWidth(),
                     sizingState.resolutionHeight(),
+                    sizingState.viewBoxX(),
+                    sizingState.viewBoxY(),
+                    sizingState.viewBoxWidth(),
+                    sizingState.viewBoxHeight()
+            );
+        } finally {
+            profiler.pop();
+        }
+    }
+
+    private BrowserSurfaceTextureFrame pushPrepareTextureFrame(ProfilerFiller profiler) {
+        profiler.push("prepareTextureFrame");
+        try {
+            return browser.prepareMainFrameTexture(
                     sizingState.viewBoxX(),
                     sizingState.viewBoxY(),
                     sizingState.viewBoxWidth(),

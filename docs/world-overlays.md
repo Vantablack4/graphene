@@ -7,6 +7,9 @@ inspectors.
 This is a screen-space feature. Graphene projects world anchors into GUI coordinates and sends those projected positions
 to JavaScript. It does not render a Chromium texture as a depth-tested quad inside the 3D world.
 
+If the browser UI should physically sit in the world and be occluded by terrain, use [World Surfaces](world-surfaces.md)
+instead.
+
 ## Java API
 
 Create one overlay layer per UI surface:

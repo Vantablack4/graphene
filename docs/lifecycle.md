@@ -56,6 +56,19 @@ GrapheneCore.closeOwnedSurfaces(owner);
 `GrapheneCore.closeOwnedSurfaces(owner)` closes owned world overlays before closing browser surfaces for the same owner.
 This removes the HUD element and releases the underlying browser surface together.
 
+## World Surface Lifecycle
+
+`GrapheneWorldSurface` owns one transparent `BrowserSurface` and registers itself with Fabric level rendering. Close it
+directly or through the owner key:
+
+```java
+surface.close();
+GrapheneCore.closeOwnedSurfaces(owner);
+```
+
+`GrapheneCore.closeOwnedSurfaces(owner)` closes owned world overlays, owned world surfaces, and then any remaining
+browser surfaces for the same owner.
+
 ## Screen Auto-Close
 
 `ScreenMixin` tracks Graphene web views and closes them by default on `Screen.onClose()`.

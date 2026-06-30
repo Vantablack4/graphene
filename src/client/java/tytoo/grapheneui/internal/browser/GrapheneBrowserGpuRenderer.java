@@ -3,6 +3,7 @@ package tytoo.grapheneui.internal.browser;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import tytoo.grapheneui.api.surface.BrowserSurfaceTextureFrame;
 
 import java.awt.image.BufferedImage;
 import java.util.concurrent.CompletableFuture;
@@ -96,6 +97,45 @@ final class GrapheneBrowserGpuRenderer implements AutoCloseable {
                 popupPlacement.sourceHeight(),
                 popupFrame.width(),
                 popupFrame.height()
+        );
+    }
+
+    BrowserSurfaceTextureFrame prepareMainFrameTexture(
+            GraphenePaintBuffer.Snapshot snapshot,
+            int sourceX,
+            int sourceY,
+            int sourceWidth,
+            int sourceHeight
+    ) {
+        GraphenePaintBuffer.FrameView mainFrame = snapshot.mainFrame();
+        if (mainFrame == null) {
+            return null;
+        }
+
+        GrapheneBrowserRenderBounds.Region visibleRegion = GrapheneBrowserRenderBounds.clampRegion(
+                sourceX,
+                sourceY,
+                sourceWidth,
+                sourceHeight,
+                mainFrame.width(),
+                mainFrame.height()
+        );
+        if (visibleRegion == null) {
+            return null;
+        }
+
+        mainTexture.ensureSize(mainFrame.width(), mainFrame.height());
+        frameUploader.uploadIfNeeded(mainTexture, mainFrame);
+        mainTexture.ensureRegistered();
+
+        return new BrowserSurfaceTextureFrame(
+                mainTexture.textureId(),
+                mainFrame.width(),
+                mainFrame.height(),
+                (float) visibleRegion.x() / mainFrame.width(),
+                (float) (visibleRegion.x() + visibleRegion.width()) / mainFrame.width(),
+                (float) visibleRegion.y() / mainFrame.height(),
+                (float) (visibleRegion.y() + visibleRegion.height()) / mainFrame.height()
         );
     }
 

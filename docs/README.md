@@ -22,6 +22,7 @@ Recommended reading order:
 - [Debugging](debugging.md)
 - [Advanced Surface](advanced-surface.md)
 - [World Overlays](world-overlays.md)
+- [World Surfaces](world-surfaces.md)
 - [Native Slots](native-slots.md)
 - [Troubleshooting](troubleshooting.md)
 - [Testing](testing.md)
