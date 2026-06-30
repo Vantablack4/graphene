@@ -1,6 +1,6 @@
 # Security Policy
 
-Graphene is a client-side Chromium-based UI library for Minecraft `1.21.11` on Fabric.
+Graphene is a client-side Chromium-based UI library for Minecraft `26.1.2` on Fabric.
 If you think you found a real worth to fix security issue please follow the instructions below to report it.
 
 ## Supported Versions

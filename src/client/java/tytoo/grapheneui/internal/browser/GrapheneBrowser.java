@@ -2,7 +2,7 @@ package tytoo.grapheneui.internal.browser;
 
 import com.mojang.blaze3d.platform.cursor.CursorType;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import org.cef.CefBrowserSettings;
 import org.cef.CefClient;
 import org.cef.browser.CefBrowser;
@@ -232,7 +232,7 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     }
 
     public void render(
-            GuiGraphics guiGraphics,
+            GuiGraphicsExtractor graphics,
             int x,
             int y,
             int width,
@@ -243,7 +243,7 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
             int sourceHeight
     ) {
         renderer.render(
-                guiGraphics,
+                graphics,
                 paintBuffer.snapshot(),
                 x,
                 y,

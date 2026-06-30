@@ -10,7 +10,7 @@ import org.gradle.jvm.toolchain.JavaToolchainService
 import tytoo.graphene.UnpackSourcesTask
 
 plugins {
-	id("net.fabricmc.fabric-loom-remap")
+	id("net.fabricmc.fabric-loom")
 	id("maven-publish")
 	id("signing")
 }
@@ -23,13 +23,13 @@ val loaderVersion = property("loader_version") as String
 val fabricApiVersion = property("fabric_api_version") as String
 val jcefGithubVersion = property("jcefgithub_version") as String
 val junitVersion = property("junit_version") as String
-val javaLanguageVersion: JavaLanguageVersion = JavaLanguageVersion.of(21)
+val javaLanguageVersion: JavaLanguageVersion = JavaLanguageVersion.of(25)
 val grapheneDebugSelector = (findProperty("grapheneDebug") as String?)
 	?.trim()
 	?.takeIf { it.isNotEmpty() }
 val githubUsername: String? = (findProperty("gpr.user") as String?) ?: System.getenv("GITHUB_ACTOR")
 val githubToken: String? = (findProperty("gpr.key") as String?) ?: System.getenv("GITHUB_TOKEN")
-val githubRepository = (findProperty("gpr.repo") as String?) ?: System.getenv("GITHUB_REPOSITORY") ?: "trethore/graphene"
+val githubRepository = (findProperty("gpr.repo") as String?) ?: System.getenv("GITHUB_REPOSITORY") ?: "Vantablack4/graphene"
 val mavenCentralUsername: String? = (findProperty("mavenCentralUsername") as String?)
 	?: System.getenv("MAVEN_CENTRAL_USERNAME")
 val mavenCentralPassword: String? = (findProperty("mavenCentralPassword") as String?)
@@ -116,8 +116,7 @@ loom {
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft("com.mojang:minecraft:${minecraftVersion}")
-	mappings(loom.officialMojangMappings())
-	modImplementation("net.fabricmc:fabric-loader:${loaderVersion}")
+	implementation("net.fabricmc:fabric-loader:${loaderVersion}")
 	// JCEF.
 	implementation("io.github.trethore:jcefgithub:${jcefGithubVersion}:all-relocated") {
 		isTransitive = false
@@ -126,7 +125,7 @@ dependencies {
 	sourceDeps("io.github.trethore:jcefgithub:${jcefGithubVersion}:sources")
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
-	modImplementation("net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}")
+	implementation("net.fabricmc.fabric-api:fabric-api:${fabricApiVersion}")
 
 	testImplementation(platform("org.junit:junit-bom:${junitVersion}"))
 	testImplementation("org.junit.jupiter:junit-jupiter")
@@ -193,11 +192,11 @@ publishing {
 			pom {
 				name.set("Graphene UI")
 				description.set("Client-side Chromium-based UI library for Minecraft Fabric mods.")
-				url.set("https://github.com/trethore/graphene")
+				url.set("https://github.com/Vantablack4/graphene")
 				licenses {
 					license {
 						name.set("MIT License")
-						url.set("https://github.com/trethore/graphene/blob/main/LICENSE")
+						url.set("https://github.com/Vantablack4/graphene/blob/main/LICENSE")
 					}
 				}
 				developers {
@@ -208,9 +207,9 @@ publishing {
 					}
 				}
 				scm {
-					connection.set("scm:git:git://github.com/trethore/graphene.git")
-					developerConnection.set("scm:git:ssh://git@github.com/trethore/graphene.git")
-					url.set("https://github.com/trethore/graphene")
+					connection.set("scm:git:git://github.com/Vantablack4/graphene.git")
+					developerConnection.set("scm:git:ssh://git@github.com/Vantablack4/graphene.git")
+					url.set("https://github.com/Vantablack4/graphene")
 				}
 			}
 		}

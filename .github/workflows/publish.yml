@@ -6,7 +6,7 @@ on:
       publish_target:
         description: Which publish and release actions to run
         required: true
-        default: all
+        default: publish-github
         type: choice
         options:
           - all
@@ -42,7 +42,7 @@ jobs:
       - name: setup jdk
         uses: actions/setup-java@v5
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: 'microsoft'
           cache: gradle
 
@@ -149,7 +149,7 @@ jobs:
         env:
           MOD_VERSION: ${{ steps.metadata.outputs.mod_version }}
         run: |
-          expected_component_directory="build/central-portal/staging/io/github/trethore/graphene-ui/${MOD_VERSION}"
+          expected_component_directory="build/central-portal/staging/com/vantablack4/mc/graphene-ui/${MOD_VERSION}"
           if [ ! -d "${expected_component_directory}" ]; then
             echo "Expected staged component directory '${expected_component_directory}' to exist." >&2
             exit 1
@@ -253,7 +253,7 @@ jobs:
       - name: setup jdk
         uses: actions/setup-java@v5
         with:
-          java-version: '21'
+          java-version: '25'
           distribution: 'microsoft'
           cache: gradle
 
@@ -358,12 +358,12 @@ jobs:
             exit 1
           fi
 
-          deployment_name="io.github.trethore:graphene-ui:${MOD_VERSION}"
+          deployment_name="com.vantablack4.mc:graphene-ui:${MOD_VERSION}"
           auth_token="$(printf '%s:%s' "${MAVEN_CENTRAL_USERNAME}" "${MAVEN_CENTRAL_PASSWORD}" | base64 | tr -d '\n')"
           deployment_id="$(curl --fail-with-body --silent --show-error \
             --request POST \
             --header "Authorization: Bearer ${auth_token}" \
             --form "bundle=@${bundle_path};type=application/octet-stream" \
-            "https://central.sonatype.com/api/v1/publisher/upload?name=io.github.trethore%3Agraphene-ui%3A${MOD_VERSION}&publishingType=AUTOMATIC")"
+            "https://central.sonatype.com/api/v1/publisher/upload?name=com.vantablack4.mc%3Agraphene-ui%3A${MOD_VERSION}&publishingType=AUTOMATIC")"
 
           echo "Uploaded deployment to Central Portal (${deployment_name}): ${deployment_id}"

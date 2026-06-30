@@ -10,7 +10,8 @@ Please describe the issue and the changes you made to fix it.
 
 ## Testing
 
-- [ ] `./gradlew compileJava`
+- [ ] `./gradlew compileClientJava`
+- [ ] `./gradlew compileDebugJava`
 - [ ] `./gradlew test`
 - [ ] `./gradlew build`
 - [ ] `./gradlew runDebugClient`

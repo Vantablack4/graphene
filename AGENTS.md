@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Graphene is a modern, client-side, Chromium-based UI library for Minecraft 1.21.11 that runs on the Fabric mod loader.
+Graphene is a modern, client-side, Chromium-based UI library for Minecraft 26.1.2 that runs on the Fabric mod loader.
 Its goal is to provide a simple yet powerful API for mod developers to create rich, web-based user interfaces in
 Minecraft using JCEF.
 
@@ -31,7 +31,7 @@ Here is the structure of the repository:
 
 ## General Coding Conventions
 
-- Target Java 21, use 4-space indentation, and keep packages under `tytoo.grapheneui*`.
+- Target Java 25, use 4-space indentation, and keep packages under `tytoo.grapheneui*`.
 - Prefer explicit types instead of `var`, and use descriptive names rather than one-letter identifiers.
 - Keep member order consistent in Java classes: static constants, static fields, instance fields, constructors, overridden
   methods, public methods, protected and private helper methods, then getters and setters at the bottom.
@@ -42,17 +42,17 @@ Here is the structure of the repository:
 - Assume contributors use IntelliJ IDEA, and keep code free of IDE warnings.
 - If requirements are unclear or infeasible, ask for clarification before proceeding.
 
-## Java 21 Expectations
+## Java 25 Expectations
 
-- Assume Java 21 at runtime; use only stable features and avoid preview or incubator APIs.
-- Use modern Java 21 standard-library utilities (Streams, Optional, records) when they improve clarity.
+- Assume Java 25 at runtime; use only stable features and avoid preview or incubator APIs.
+- Use modern Java standard-library utilities (Streams, Optional, records) when they improve clarity.
 - Use descriptive names like `ignored` for intentionally unused variables, parameters, and caught exceptions.
 - When intentionally ignoring a caught exception, keep a short explanatory comment in the catch block.
 - Maintain explicit, readable control flow; avoid clever constructs that harm comprehension.
 
 ## Minecraft Integration Rules
 
-- The codebase targets Fabric for Minecraft 1.21.11 with official Mojang mappings; use APIs that exist in this combination.
+- The codebase targets Fabric for Minecraft 26.1.2 with official Mojang mappings; use APIs that exist in this combination.
 - Prefer modern Fabric/Minecraft methods such as `Identifier.fromNamespaceAndPath(String string, String string2)` and
   up-to-date rendering APIs; avoid deprecated signatures.
 - Route Minecraft client singleton access through `tytoo.grapheneui.internal.mc.McClient` helpers instead of calling `Minecraft.getInstance()` directly.
@@ -71,7 +71,7 @@ Here is the structure of the repository:
 ## Dependencies & External Sources
 
 - Fabric Loader and Fabric API are versioned in `gradle.properties`; Fabric Loom integrates official Mojang mappings
-  into the client source set and remaps game classes during packaging. Keep these aligned with Minecraft `1.21.11` before updating APIs.
+  into the client source set and remaps game classes during packaging. Keep these aligned with Minecraft `26.1.2` before updating APIs.
 - `me.tytoo:jcefgithub` is this project's own JCEF library, published on GitHub Packages; browse its unpacked sources in `references/`.
 - Library sources are fetched through the `sourceDeps` configuration (see `build.gradle.kts`) and unpacked per library
   using `./gradlew unpackSources` into `references/<library>`. Use these sources to explore library source code.

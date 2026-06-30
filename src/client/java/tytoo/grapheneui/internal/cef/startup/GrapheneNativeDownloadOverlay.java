@@ -1,7 +1,7 @@
 package tytoo.grapheneui.internal.cef.startup;
 
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Overlay;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -30,35 +30,35 @@ public final class GrapheneNativeDownloadOverlay extends Overlay {
     }
 
     @Override
-    public void render(@NonNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
+    public void extractRenderState(@NonNull GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (!state.isActive()) {
             return;
         }
 
         Screen currentScreen = McClient.currentScreen();
         if (currentScreen != null) {
-            currentScreen.renderWithTooltipAndSubtitles(guiGraphics, mouseX, mouseY, partialTick);
+            currentScreen.extractRenderStateWithTooltipAndSubtitles(graphics, mouseX, mouseY, partialTick);
         }
 
-        int width = guiGraphics.guiWidth();
-        int height = guiGraphics.guiHeight();
+        int width = graphics.guiWidth();
+        int height = graphics.guiHeight();
         int barLeft = width / 2 - BAR_WIDTH / 2;
         int barTop = height / 2;
         int filledWidth = Math.round((BAR_WIDTH - BORDER_WIDTH * 2) * state.progress());
         Font font = McClient.mc().font;
         Component title = Component.literal("Graphene: downloading natives for " + state.platformIdentifier());
 
-        guiGraphics.nextStratum();
-        guiGraphics.fillGradient(0, 0, width, height, BACKGROUND_COLOR, BACKGROUND_COLOR);
-        guiGraphics.drawCenteredString(
+        graphics.nextStratum();
+        graphics.fillGradient(0, 0, width, height, BACKGROUND_COLOR, BACKGROUND_COLOR);
+        graphics.centeredText(
                 font,
                 title,
                 width / 2,
                 barTop - TITLE_MARGIN - font.lineHeight,
                 TITLE_COLOR
         );
-        guiGraphics.fill(barLeft, barTop, barLeft + BAR_WIDTH, barTop + BAR_HEIGHT, BAR_OUTLINE_COLOR);
-        guiGraphics.fill(
+        graphics.fill(barLeft, barTop, barLeft + BAR_WIDTH, barTop + BAR_HEIGHT, BAR_OUTLINE_COLOR);
+        graphics.fill(
                 barLeft + BORDER_WIDTH,
                 barTop + BORDER_WIDTH,
                 barLeft + BAR_WIDTH - BORDER_WIDTH,
@@ -66,7 +66,7 @@ public final class GrapheneNativeDownloadOverlay extends Overlay {
                 BAR_BACKGROUND_COLOR
         );
         if (filledWidth > 0) {
-            guiGraphics.fill(
+            graphics.fill(
                     barLeft + BORDER_WIDTH,
                     barTop + BORDER_WIDTH,
                     barLeft + BORDER_WIDTH + filledWidth,

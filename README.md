@@ -2,10 +2,10 @@
 
 [![Loader: Fabric](https://img.shields.io/badge/Loader-Fabric-00BFA5?style=for-the-badge&logo=fabric)](https://modrinth.com/mod/fabric-api)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)](LICENSE)
-[![Minecraft: 1.21.11](https://img.shields.io/badge/Minecraft-1.21.11-5E8C31?style=for-the-badge&logo=minecraft)](https://www.minecraft.net/)
+[![Minecraft: 26.1.2](https://img.shields.io/badge/Minecraft-26.1.2-5E8C31?style=for-the-badge&logo=minecraft)](https://www.minecraft.net/)
 [![Modrinth](https://img.shields.io/badge/Modrinth-Graphene-1BD96A?style=for-the-badge&logo=modrinth)](https://modrinth.com/mod/grapheneui)
 
-Graphene is a client-side UI library for Minecraft 1.21.11 (Fabric) that lets mod developers build interfaces with web technologies.
+Graphene is a client-side UI library for Minecraft 26.1.2 (Fabric) that lets mod developers build interfaces with web technologies.
 It embeds Chromium through JCEF, so you can render HTML/CSS/JavaScript UIs in-game while keeping a clean Java API for mod integration.
 
 ![Graphene demo](docs/images/demo.png)
@@ -19,13 +19,13 @@ Instead of writing every screen directly with Minecraft rendering primitives, yo
 - build rich, responsive interfaces using browser capabilities;
 - connect those interfaces to your mod logic through Graphene's API;
 - iterate on UI faster with familiar web tooling and patterns;
-- keep the integration focused on Fabric + Minecraft 1.21.11.
+- keep the integration focused on Fabric + Minecraft 26.1.2.
 
 In short: Graphene gives Fabric mods a practical way to use web-powered interfaces without reinventing a full UI stack inside the game.
 
 ## Requirements
 
-- Java: `21`
+- Java: `25`
 - GPU: `NVIDIA GeForce GT 720` or better
 - For macOS users: macOS 12 (Monterey) or later
 
@@ -43,19 +43,15 @@ In short: Graphene gives Fabric mods a practical way to use web-powered interfac
 
 ## Installation
 
-Graphene is published on Maven Central and GitHub Packages.
-
-We recommend using Maven Central for ease of use (no authentication required).
-
-Check [Maven Central](https://repo1.maven.org/maven2/io/github/trethore/graphene-ui/) for the latest version.
+This Vantablack fork is published through GitHub Packages.
 
 ### Maven coordinates
 
 ```xml
 <dependency>
-  <groupId>io.github.trethore</groupId>
+  <groupId>com.vantablack4.mc</groupId>
   <artifactId>graphene-ui</artifactId>
-  <version>&lt;version&gt;</version>
+  <version>1.7.2-vb.1+mc26.1.2</version>
 </dependency>
 ```
 
@@ -65,15 +61,15 @@ Primary model (recommended): keep Graphene as a separate mod dependency.
 
 ```kotlin
 repositories {
-    mavenCentral()
+    maven {
+        url = uri("https://maven.pkg.github.com/Vantablack4/graphene")
+    }
 }
 
 dependencies {
-    modImplementation("io.github.trethore:graphene-ui:<version>")
+    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.1+mc26.1.2")
 }
 ```
-
-Note: Graphene is also available on GitHub Packages.
 
 In your `fabric.mod.json`, declare:
 
@@ -165,8 +161,8 @@ Start [HERE](docs/README.md)!
 Contributions are welcome!
 
 - Read the contributor guide in [CONTRIBUTING.md](CONTRIBUTING.md).
-- Report bugs or request features in [Issues](https://github.com/trethore/graphene/issues).
-- Open changes through [Pull Requests](https://github.com/trethore/graphene/pulls).
+- Report bugs or request features in [Issues](https://github.com/Vantablack4/graphene/issues).
+- Open changes through [Pull Requests](https://github.com/Vantablack4/graphene/pulls).
 - All pull requests must be tested before being submitted.
 
 ## License

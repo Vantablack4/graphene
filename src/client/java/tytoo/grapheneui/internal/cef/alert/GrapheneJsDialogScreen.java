@@ -1,6 +1,6 @@
 package tytoo.grapheneui.internal.cef.alert;
 
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.MultiLineLabel;
@@ -74,9 +74,9 @@ final class GrapheneJsDialogScreen extends Screen {
     }
 
     @Override
-    public void render(@NonNull GuiGraphics guiGraphics, int mouseX, int mouseY, float partialTick) {
-        super.render(guiGraphics, mouseX, mouseY, partialTick);
-        GrapheneDialogScreenRenderHelper.renderCenteredTitleAndMessage(guiGraphics, this.font, this.title, this.width, this.messageLabel, TITLE_COLOR, VERTICAL_TEXT_START, TEXT_LINE_HEIGHT);
+    public void extractRenderState(@NonNull GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        GrapheneDialogScreenRenderHelper.renderCenteredTitleAndMessage(graphics, this.font, this.title, this.width, this.messageLabel, TITLE_COLOR, VERTICAL_TEXT_START, TEXT_LINE_HEIGHT);
     }
 
     @Override

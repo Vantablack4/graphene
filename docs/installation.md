@@ -1,21 +1,21 @@
 # Installation
 
-Graphene is published as a Fabric mod on Maven Central.
+Graphene is published as a Fabric mod through the Vantablack GitHub Packages registry.
 Recommended integration is to depend on Graphene as a separate runtime mod.
 
 ## 1) Dependency Coordinates
 
-- Group: `io.github.trethore`
+- Group: `com.vantablack4.mc`
 - Artifact: `graphene-ui`
-- Version: `<version>`
+- Version: `1.7.2-vb.1+mc26.1.2`
 
-Maven Central artifact path:
+GitHub Packages registry:
 
-- `https://repo1.maven.org/maven2/io/github/trethore/graphene-ui/<version>/`
+- `https://maven.pkg.github.com/Vantablack4/graphene`
 
 Releases:
 
-- `https://github.com/trethore/graphene/releases`
+- `https://github.com/Vantablack4/graphene/releases`
 
 ## 2) Gradle Setup (Recommended)
 
@@ -23,11 +23,13 @@ In your mod `build.gradle.kts`:
 
 ```kotlin
 repositories {
-    mavenCentral()
+    maven {
+        url = uri("https://maven.pkg.github.com/Vantablack4/graphene")
+    }
 }
 
 dependencies {
-    modImplementation("io.github.trethore:graphene-ui:<version>")
+    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.1+mc26.1.2")
 }
 ```
 
@@ -52,8 +54,8 @@ If you need one distributable jar, you can embed Graphene:
 
 ```kotlin
 dependencies {
-    modImplementation("io.github.trethore:graphene-ui:<version>")
-    include("io.github.trethore:graphene-ui:<version>")
+    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.1+mc26.1.2")
+    include("com.vantablack4.mc:graphene-ui:1.7.2-vb.1+mc26.1.2")
 }
 ```
 
@@ -165,10 +167,10 @@ Conflicts throw a startup `IllegalStateException` that names both conflicting co
 
 Current repository baseline:
 
-- Minecraft `1.21.11`
-- Fabric Loader `0.18.4`
-- Fabric API `0.141.3+1.21.11`
-- Java `21`
+- Minecraft `26.1.2`
+- Fabric Loader `0.19.2`
+- Fabric API `0.151.0+26.1.2`
+- Java `25`
 
 ---
 

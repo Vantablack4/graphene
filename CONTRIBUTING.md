@@ -14,10 +14,10 @@ Here is the recommended development setup that ensures consistency and compatibi
 
 ### Development Setup
 
-- Java `21`
-- Minecraft `1.21.11`
-- Fabric Loader `0.18.4`
-- Fabric API `0.141.3+1.21.11`
+- Java `25`
+- Minecraft `26.1.2`
+- Fabric Loader `0.19.2`
+- Fabric API `0.151.0+26.1.2`
 
 ### Public API and Internal Code
 
@@ -52,7 +52,7 @@ Changes in areas such as `internal/bridge`, `internal/http`, `internal/cef`, and
 ### Issue First Policy
 
 All PRs must reference an existing issue.
-Open one [HERE](https://github.com/trethore/graphene/issues) and describe the problem you are trying to solve or the feature you want to add.
+Open one [HERE](https://github.com/Vantablack4/graphene/issues) and describe the problem you are trying to solve or the feature you want to add.
 
 - Use Fixes #12 or Closes #12 in your PR description to link the issue.
 - For small fixes, a brief issue is fine - provide enough context for maintainers to understand the problem.
