@@ -13,7 +13,8 @@ final class GrapheneBridgeScriptLoader {
     private static final List<String> SCRIPT_RESOURCE_PATHS = List.of(
             "assets/graphene-ui/bridge/bridge.js",
             "assets/graphene-ui/bridge/native-slots.js",
-            "assets/graphene-ui/bridge/mouse.js"
+            "assets/graphene-ui/bridge/mouse.js",
+            "assets/graphene-ui/bridge/world-overlays.js"
     );
     private static final List<String> SCRIPTS = loadScripts();
 
