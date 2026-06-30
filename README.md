@@ -53,7 +53,7 @@ This Vantablack fork is published through GitHub Packages.
 <dependency>
   <groupId>com.vantablack4.mc</groupId>
   <artifactId>graphene-ui</artifactId>
-  <version>1.7.2-vb.5+mc26.1.2</version>
+  <version>1.7.2-vb.6+mc26.1.2</version>
 </dependency>
 ```
 
@@ -69,7 +69,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.5+mc26.1.2")
+    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.6+mc26.1.2")
 }
 ```
 

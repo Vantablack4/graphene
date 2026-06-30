@@ -19,8 +19,6 @@ import net.minecraft.world.phys.Vec3;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
 import org.cef.network.CefRequest;
-import org.joml.Matrix4f;
-import org.joml.Vector3f;
 import tytoo.grapheneui.api.surface.GrapheneLoadListener;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
 import tytoo.grapheneui.api.nativeui.GrapheneNativeSlots;
@@ -235,17 +233,14 @@ final class GrapheneWorldOverlayLayerImpl implements GrapheneWorldOverlayLayer, 
 
         Vec3 cameraPosition = camera.position();
         Frustum frustum = camera.getCullFrustum();
-        Matrix4f viewProjection = camera.getViewRotationProjectionMatrix(new Matrix4f());
-        Vector3f projected = new Vector3f();
         ArrayList<ProjectedAnchor> projectedAnchors = new ArrayList<>(Math.min(anchorSnapshot.size(), config.maxAnchors()));
 
         for (GrapheneWorldAnchor anchor : anchorSnapshot) {
             ProjectedAnchor projectedAnchor = projectAnchor(
+                    gameRenderer,
                     level,
                     cameraPosition,
                     frustum,
-                    viewProjection,
-                    projected,
                     guiWidth,
                     guiHeight,
                     anchor
@@ -276,11 +271,10 @@ final class GrapheneWorldOverlayLayerImpl implements GrapheneWorldOverlayLayer, 
     }
 
     private ProjectedAnchor projectAnchor(
+            GameRenderer gameRenderer,
             ClientLevel level,
             Vec3 cameraPosition,
             Frustum frustum,
-            Matrix4f viewProjection,
-            Vector3f projected,
             int guiWidth,
             int guiHeight,
             GrapheneWorldAnchor anchor
@@ -310,16 +304,10 @@ final class GrapheneWorldOverlayLayerImpl implements GrapheneWorldOverlayLayer, 
             return null;
         }
 
-        projected.set(
-                (float) (position.x - cameraPosition.x),
-                (float) (position.y - cameraPosition.y),
-                (float) (position.z - cameraPosition.z)
-        );
-        viewProjection.transformProject(projected);
-
-        double projectedX = projected.x();
-        double projectedY = projected.y();
-        double projectedZ = projected.z();
+        Vec3 projected = gameRenderer.projectPointToScreen(position);
+        double projectedX = projected.x;
+        double projectedY = projected.y;
+        double projectedZ = projected.z;
         if (!Double.isFinite(projectedX) || !Double.isFinite(projectedY) || !Double.isFinite(projectedZ)) {
             return null;
         }
