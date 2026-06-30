@@ -25,10 +25,13 @@ import tytoo.grapheneui.api.world.GrapheneWorldSurface;
 import tytoo.grapheneui.api.world.GrapheneWorldSurfaceConfig;
 import tytoo.grapheneui.api.world.GrapheneWorldSurfaceFacing;
 import tytoo.grapheneui.api.world.GrapheneWorldSurfaceOrientation;
+import tytoo.grapheneui.api.world.GrapheneWorldSurfacePick;
 import tytoo.grapheneui.api.world.GrapheneWorldSurfaceSide;
 import tytoo.grapheneui.internal.mc.McClient;
 
+import java.awt.Point;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
@@ -240,6 +243,20 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     }
 
     @Override
+    public Optional<GrapheneWorldSurfacePick> pickFromRay(
+            ResourceKey<Level> dimension,
+            Vec3 rayOrigin,
+            Vec3 rayDirection,
+            double rayLength
+    ) {
+        if (closed.get()) {
+            return Optional.empty();
+        }
+
+        return pick(snapshotRenderState(), dimension, rayOrigin, rayDirection, rayLength);
+    }
+
+    @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) {
             return;
@@ -313,6 +330,19 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         }
     }
 
+    Optional<GrapheneWorldSurfacePick> pick(
+            ResourceKey<Level> dimension,
+            Vec3 rayOrigin,
+            Vec3 rayDirection,
+            double rayLength
+    ) {
+        if (closed.get()) {
+            return Optional.empty();
+        }
+
+        return pick(snapshotRenderState(), dimension, rayOrigin, rayDirection, rayLength);
+    }
+
     private RenderState snapshotRenderState() {
         synchronized (stateLock) {
             return new RenderState(
@@ -327,6 +357,93 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
                     renderWhenScreenOpen
             );
         }
+    }
+
+    private Optional<GrapheneWorldSurfacePick> pick(
+            RenderState renderState,
+            ResourceKey<Level> pickDimension,
+            Vec3 rayOrigin,
+            Vec3 rayDirection,
+            double rayLength
+    ) {
+        Objects.requireNonNull(rayOrigin, "rayOrigin");
+        Objects.requireNonNull(rayDirection, "rayDirection");
+        if (!rayOrigin.isFinite() || !rayDirection.isFinite() || rayDirection.lengthSqr() < 1.0E-6D) {
+            return Optional.empty();
+        }
+        if (rayLength <= 0.0D || !Double.isFinite(rayLength)) {
+            return Optional.empty();
+        }
+        if (!renderState.renderWhenScreenOpen && McClient.currentScreen() != null) {
+            return Optional.empty();
+        }
+        if (renderState.dimension != null && !renderState.dimension.equals(pickDimension)) {
+            return Optional.empty();
+        }
+
+        double cameraDistanceSquared = rayOrigin.distanceToSqr(renderState.position);
+        if (cameraDistanceSquared > renderState.maxDistance * renderState.maxDistance) {
+            return Optional.empty();
+        }
+
+        Vec3 normalizedDirection = rayDirection.normalize();
+        Quaternionf effectiveRotation = resolveRotation(renderState, rayOrigin);
+        QuadSide quadSide = resolveQuadSide(renderState, rayOrigin, effectiveRotation);
+        if (quadSide == null) {
+            return Optional.empty();
+        }
+
+        Vector3f normal = effectiveRotation.transformPositiveZ(new Vector3f()).normalize();
+        double denominator = normalizedDirection.x * normal.x
+                + normalizedDirection.y * normal.y
+                + normalizedDirection.z * normal.z;
+        if (Math.abs(denominator) < 1.0E-6D) {
+            return Optional.empty();
+        }
+
+        Vec3 originToSurface = renderState.position.subtract(rayOrigin);
+        double distance = (originToSurface.x * normal.x + originToSurface.y * normal.y + originToSurface.z * normal.z)
+                / denominator;
+        if (distance < 0.0D || distance > rayLength) {
+            return Optional.empty();
+        }
+
+        Vec3 hitPosition = rayOrigin.add(normalizedDirection.scale(distance));
+        Vector3f local = new Vector3f(
+                (float) (hitPosition.x - renderState.position.x),
+                (float) (hitPosition.y - renderState.position.y),
+                (float) (hitPosition.z - renderState.position.z)
+        );
+        new Quaternionf(effectiveRotation).invert().transform(local);
+
+        float halfWidth = renderState.worldWidth * 0.5F;
+        float halfHeight = renderState.worldHeight * 0.5F;
+        if (local.x < -halfWidth || local.x > halfWidth || local.y < -halfHeight || local.y > halfHeight) {
+            return Optional.empty();
+        }
+
+        int renderedWidth = surface.getSurfaceWidth();
+        int renderedHeight = surface.getSurfaceHeight();
+        boolean frontSide = quadSide == QuadSide.FRONT;
+        double u = frontSide
+                ? local.x / renderState.worldWidth + 0.5D
+                : 0.5D - local.x / renderState.worldWidth;
+        double v = 0.5D - local.y / renderState.worldHeight;
+        double surfaceX = Math.clamp(u, 0.0D, 1.0D) * renderedWidth;
+        double surfaceY = Math.clamp(v, 0.0D, 1.0D) * renderedHeight;
+        Point browserPoint = surface.toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight);
+
+        return Optional.of(new GrapheneWorldSurfacePick(
+                this,
+                hitPosition,
+                distance,
+                frontSide,
+                surfaceX,
+                surfaceY,
+                renderedWidth,
+                renderedHeight,
+                browserPoint
+        ));
     }
 
     private static Quaternionf resolveRotation(RenderState renderState, Vec3 cameraPosition) {

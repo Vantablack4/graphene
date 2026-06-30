@@ -3,6 +3,7 @@
   "package": "tytoo.grapheneui.internal.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "MinecraftWorldSurfaceInputMixin",
     "ScreenMixin"
   ],
   "injectors": {

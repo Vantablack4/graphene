@@ -11,6 +11,8 @@ import tytoo.grapheneui.api.nativeui.GrapheneNativeSlots;
 import tytoo.grapheneui.api.surface.BrowserSurface;
 import tytoo.grapheneui.api.surface.BrowserSurfaceInputAdapter;
 
+import java.util.Optional;
+
 @SuppressWarnings("unused")
 public interface GrapheneWorldSurface extends AutoCloseable {
     Identifier surfaceId();
@@ -62,6 +64,12 @@ public interface GrapheneWorldSurface extends AutoCloseable {
     boolean renderWhenScreenOpen();
 
     void setRenderWhenScreenOpen(boolean renderWhenScreenOpen);
+
+    /**
+     * Intersects a world ray with this rendered surface using the same orientation, facing, side, distance,
+     * dimension, and screen-open visibility rules as rendering.
+     */
+    Optional<GrapheneWorldSurfacePick> pickFromRay(ResourceKey<Level> dimension, Vec3 rayOrigin, Vec3 rayDirection, double rayLength);
 
     @Override
     void close();

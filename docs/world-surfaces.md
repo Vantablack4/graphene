@@ -83,11 +83,32 @@ globalThis.grapheneBridge.on("my-mod:surface-frame", (frame) => {
 });
 ```
 
+## Crosshair Interaction
+
+Graphene automatically raycasts from the camera when the player right-clicks with the crosshair over a visible world
+surface. The hit point is routed through the surface's `BrowserSurfaceInputAdapter` as a primary browser click, so normal
+HTML buttons and click handlers work without left-clicking and risking block breaking.
+
+Use the same pick API when you need custom interaction policy:
+
+```java
+Vector3fc forward = camera.forwardVector();
+Optional<GrapheneWorldSurfacePick> pick = GrapheneWorldSurfaces.pickNearestFromRay(
+        client.level.dimension(),
+        camera.position(),
+        new Vec3(forward.x(), forward.y(), forward.z()),
+        64.0D
+);
+```
+
+The returned `surfaceX`/`surfaceY` values are logical Graphene surface coordinates, already adjusted for readable
+two-sided surfaces.
+
 ## Current Limits
 
 - World surfaces render the browser texture only; native slots are still a screen-space overlay feature.
-- Input picking is intentionally not automatic yet. Consumers can still use `surface.inputAdapter()` when they have their
-  own raycast-to-surface mapping.
+- Crosshair interaction supports pointer-style clicks. Text entry and keyboard focus remain explicit UI flows that should
+  be handled through a normal screen or a mod-specific input mode.
 - `CAMERA` full billboards face the camera while keeping the surface's top edge as close to world-up as possible.
 - `DOUBLE_SIDED_READABLE` chooses the camera-facing side each frame and flips the back-side UV mapping. This avoids
   drawing two coplanar translucent browser quads or exposing mirrored text.
