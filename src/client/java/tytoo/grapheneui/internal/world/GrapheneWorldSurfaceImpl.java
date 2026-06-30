@@ -12,6 +12,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix3f;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 import org.joml.Vector3f;
@@ -33,6 +34,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     private static final int FULL_BRIGHT_LIGHT = 0xF000F0;
     private static final int WHITE = 0xFFFFFFFF;
+    private static final float BILLBOARD_UP_EPSILON = 1.0E-4F;
 
     private final Object stateLock = new Object();
     private final Identifier surfaceId;
@@ -344,14 +346,24 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
             return new Quaternionf();
         }
 
-        Vec3 normal = toCamera.normalize();
-        return new Quaternionf().rotationTo(
-                0.0F,
-                0.0F,
-                1.0F,
-                (float) normal.x,
-                (float) normal.y,
-                (float) normal.z
+        Vector3f forward = new Vector3f((float) toCamera.x, (float) toCamera.y, (float) toCamera.z).normalize();
+        Vector3f up = projectedUp(forward, 0.0F, 1.0F, 0.0F);
+        if (up.lengthSquared() < BILLBOARD_UP_EPSILON) {
+            up = projectedUp(forward, 0.0F, 0.0F, 1.0F);
+        }
+
+        up.normalize();
+        Vector3f right = up.cross(forward, new Vector3f()).normalize();
+
+        return new Matrix3f(right, up, forward).getNormalizedRotation(new Quaternionf());
+    }
+
+    private static Vector3f projectedUp(Vector3f forward, float x, float y, float z) {
+        float dot = forward.dot(x, y, z);
+        return new Vector3f(
+                x - forward.x * dot,
+                y - forward.y * dot,
+                z - forward.z * dot
         );
     }
 
@@ -371,7 +383,6 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         return switch (renderState.side) {
             case FRONT_ONLY -> cameraInFront ? QuadSide.FRONT : null;
             case BACK_ONLY -> cameraInFront ? null : QuadSide.BACK;
-            case DOUBLE_SIDED_MIRRORED -> QuadSide.FRONT;
             case DOUBLE_SIDED_READABLE -> cameraInFront ? QuadSide.FRONT : QuadSide.BACK;
         };
     }

@@ -7,7 +7,7 @@ Recommended integration is to depend on Graphene as a separate runtime mod.
 
 - Group: `com.vantablack4.mc`
 - Artifact: `graphene-ui`
-- Version: `1.7.2-vb.8+mc26.1.2`
+- Version: `1.7.2-vb.9+mc26.1.2`
 
 GitHub Packages registry:
 
@@ -29,7 +29,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.8+mc26.1.2")
+    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.9+mc26.1.2")
 }
 ```
 
@@ -54,8 +54,8 @@ If you need one distributable jar, you can embed Graphene:
 
 ```kotlin
 dependencies {
-    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.8+mc26.1.2")
-    include("com.vantablack4.mc:graphene-ui:1.7.2-vb.8+mc26.1.2")
+    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.9+mc26.1.2")
+    include("com.vantablack4.mc:graphene-ui:1.7.2-vb.9+mc26.1.2")
 }
 ```
 

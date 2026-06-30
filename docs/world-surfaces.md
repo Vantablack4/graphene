@@ -55,7 +55,6 @@ Side behavior is explicit so text does not become accidentally mirrored when the
 ```java
 surface.setSide(GrapheneWorldSurfaceSide.FRONT_ONLY);
 surface.setSide(GrapheneWorldSurfaceSide.BACK_ONLY);
-surface.setSide(GrapheneWorldSurfaceSide.DOUBLE_SIDED_MIRRORED);
 surface.setSide(GrapheneWorldSurfaceSide.DOUBLE_SIDED_READABLE);
 ```
 
@@ -89,8 +88,9 @@ globalThis.grapheneBridge.on("my-mod:surface-frame", (frame) => {
 - World surfaces render the browser texture only; native slots are still a screen-space overlay feature.
 - Input picking is intentionally not automatic yet. Consumers can still use `surface.inputAdapter()` when they have their
   own raycast-to-surface mapping.
+- `CAMERA` full billboards face the camera while keeping the surface's top edge as close to world-up as possible.
 - `DOUBLE_SIDED_READABLE` chooses the camera-facing side each frame and flips the back-side UV mapping. This avoids
-  drawing two coplanar translucent browser quads.
+  drawing two coplanar translucent browser quads or exposing mirrored text.
 - Use a small number of surfaces. For many crops or NPCs, aggregate into one world overlay layer or only create world
   surfaces for selected/high-value objects.
 
