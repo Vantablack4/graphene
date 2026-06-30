@@ -281,6 +281,10 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
         inputBridge.mouseMoved(this, x, y, modifiers);
     }
 
+    public void mouseExited(int x, int y, int modifiers) {
+        inputBridge.mouseExited(this, x, y, modifiers);
+    }
+
     public void mouseDragged(double x, double y, int button) {
         inputBridge.mouseDragged(this, x, y, button);
     }

@@ -24,6 +24,7 @@ GrapheneWorldSurface surface = GrapheneWorldSurfaces.create(
                 .horizontalUp()
                 .side(GrapheneWorldSurfaceSide.DOUBLE_SIDED_READABLE)
                 .maxDistance(64.0D)
+                .interactionReach(48.0D)
                 .maxFps(30)
                 .build()
 );
@@ -85,9 +86,19 @@ globalThis.grapheneBridge.on("my-mod:surface-frame", (frame) => {
 
 ## Crosshair Interaction
 
-Graphene automatically raycasts from the camera when the player right-clicks with the crosshair over a visible world
-surface. The hit point is routed through the surface's `BrowserSurfaceInputAdapter` as a primary browser click, so normal
-HTML buttons and click handlers work without left-clicking and risking block breaking.
+Graphene automatically raycasts from the camera while the crosshair is over a visible world surface. Hover is routed as
+browser mouse movement. When the player right-clicks, Graphene sends a primary browser button press, keeps that press
+active while the use key is held, sends drag updates as the crosshair moves, and releases when the use key is released.
+Normal HTML buttons, hover states, and drag handlers work without left-clicking and risking block breaking.
+
+`interactionReach` controls the automatic crosshair interaction range. It defaults to
+`GrapheneWorldSurfaceConfig.DEFAULT_INTERACTION_REACH` (`64.0D`) and is intentionally separate from render
+`maxDistance`. Automatic interaction is capped by both values, so the effective reach is
+`min(surface.interactionReach(), surface.maxDistance())`.
+
+```java
+surface.setInteractionReach(32.0D);
+```
 
 Use the same pick API when you need custom interaction policy:
 
@@ -107,8 +118,8 @@ two-sided surfaces.
 ## Current Limits
 
 - World surfaces render the browser texture only; native slots are still a screen-space overlay feature.
-- Crosshair interaction supports pointer-style clicks. Text entry and keyboard focus remain explicit UI flows that should
-  be handled through a normal screen or a mod-specific input mode.
+- Crosshair interaction supports pointer-style hover, primary-button click, hold, release, and drag. Text entry and
+  keyboard focus remain explicit UI flows that should be handled through a normal screen or a mod-specific input mode.
 - `CAMERA` full billboards face the camera while keeping the surface's top edge as close to world-up as possible.
 - `DOUBLE_SIDED_READABLE` chooses the camera-facing side each frame and flips the back-side UV mapping. This avoids
   drawing two coplanar translucent browser quads or exposing mirrored text.

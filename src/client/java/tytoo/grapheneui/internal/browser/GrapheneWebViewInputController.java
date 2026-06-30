@@ -50,6 +50,14 @@ public final class GrapheneWebViewInputController {
         browser.mouseMoved(browserPoint.x, browserPoint.y, 0);
     }
 
+    public void onMouseExited() {
+        int browserMouseX = lastBrowserMouseX == Integer.MIN_VALUE ? 0 : lastBrowserMouseX;
+        int browserMouseY = lastBrowserMouseY == Integer.MIN_VALUE ? 0 : lastBrowserMouseY;
+        lastBrowserMouseX = Integer.MIN_VALUE;
+        lastBrowserMouseY = Integer.MIN_VALUE;
+        browser.mouseExited(browserMouseX, browserMouseY, GrapheneInputModifierUtil.currentModifiers());
+    }
+
     public void onMouseClicked(int button, boolean isDoubleClick, Point browserPoint) {
         primaryPointerButtonDown = button == 0;
         int currentClickCount = resolveClickCount(button, isDoubleClick);

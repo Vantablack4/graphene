@@ -29,14 +29,16 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public final class GrapheneWorldSurfaceManager {
-    private static final double DEFAULT_INTERACTION_RAY_LENGTH = 64.0D;
+    private static final int WORLD_SURFACE_BROWSER_BUTTON = GLFW.GLFW_MOUSE_BUTTON_LEFT;
     private static final AtomicInteger NEXT_SURFACE_SEQUENCE = new AtomicInteger();
     private static final AtomicBoolean RENDER_EVENT_REGISTERED = new AtomicBoolean(false);
     private static final AtomicBoolean INPUT_TICK_EVENT_REGISTERED = new AtomicBoolean(false);
     private static final Object SURFACE_LOCK = new Object();
     private static final Set<GrapheneWorldSurfaceImpl> SURFACES = new LinkedHashSet<>();
     private static final Map<Object, List<GrapheneWorldSurfaceImpl>> SURFACES_BY_OWNER = new IdentityHashMap<>();
-    private static boolean primaryUseConsumedWhileDown;
+    private static GrapheneWorldSurfacePick hoveredPick;
+    private static GrapheneWorldSurfacePick activePrimaryPick;
+    private static boolean primaryUsePressed;
 
     private GrapheneWorldSurfaceManager() {
     }
@@ -90,8 +92,11 @@ public final class GrapheneWorldSurfaceManager {
                 .min(Comparator.comparingDouble(GrapheneWorldSurfacePick::distance));
     }
 
-    public static boolean handlePrimaryClickFromCameraRay(Minecraft client) {
+    public static boolean handlePrimaryUseFromCameraRay(Minecraft client) {
         ensureInputTickEventRegistered();
+        if (primaryUsePressed) {
+            return true;
+        }
         if (client == null || client.level == null || client.player == null || client.screen != null) {
             return false;
         }
@@ -102,27 +107,12 @@ public final class GrapheneWorldSurfaceManager {
             return false;
         }
 
-        Camera camera = client.gameRenderer.getMainCamera();
-        if (camera == null || !camera.isInitialized()) {
+        Optional<GrapheneWorldSurfacePick> pick = pickNearestForInteractionFromCamera(client);
+        if (pick.isEmpty()) {
             return false;
         }
 
-        Vector3fc forward = camera.forwardVector();
-        Optional<GrapheneWorldSurfacePick> pick = pickNearestFromRay(
-                client.level.dimension(),
-                camera.position(),
-                new Vec3(forward.x(), forward.y(), forward.z()),
-                DEFAULT_INTERACTION_RAY_LENGTH
-        );
-        if (pick.isEmpty()) {
-            return primaryUseConsumedWhileDown;
-        }
-
-        if (!primaryUseConsumedWhileDown) {
-            dispatchPrimaryClick(pick.get());
-            primaryUseConsumedWhileDown = true;
-        }
-
+        beginPrimaryUse(pick.get());
         return true;
     }
 
@@ -134,6 +124,7 @@ public final class GrapheneWorldSurfaceManager {
             }
             SURFACES_BY_OWNER.values().removeIf(List::isEmpty);
         }
+        clearSurfaceInputState(surface);
     }
 
     private static void ensureRenderEventRegistered() {
@@ -173,33 +164,153 @@ public final class GrapheneWorldSurfaceManager {
     }
 
     private static void tickInputState(Minecraft client) {
-        if (client == null || client.options == null || !client.options.keyUse.isDown()) {
-            primaryUseConsumedWhileDown = false;
+        if (!isWorldPointerAvailable(client)) {
+            releasePrimaryUse();
+            clearHoveredPick();
+            return;
         }
+
+        Optional<GrapheneWorldSurfacePick> pick = pickNearestForInteractionFromCamera(client);
+        if (primaryUsePressed) {
+            tickPrimaryUse(client, pick);
+            return;
+        }
+
+        updateHoveredPick(pick);
     }
 
-    private static void dispatchPrimaryClick(GrapheneWorldSurfacePick pick) {
-        pick.surface().inputAdapter().mouseMoved(
-                pick.surfaceX(),
-                pick.surfaceY(),
-                pick.renderedWidth(),
-                pick.renderedHeight()
-        );
+    private static boolean isWorldPointerAvailable(Minecraft client) {
+        return client != null && client.options != null && client.level != null && client.player != null && client.screen == null;
+    }
+
+    private static Optional<GrapheneWorldSurfacePick> pickNearestForInteractionFromCamera(Minecraft client) {
+        Camera camera = client.gameRenderer.getMainCamera();
+        if (camera == null || !camera.isInitialized()) {
+            return Optional.empty();
+        }
+
+        Vector3fc forward = camera.forwardVector();
+        Vec3 rayDirection = new Vec3(forward.x(), forward.y(), forward.z());
+        List<GrapheneWorldSurfaceImpl> surfaces;
+        synchronized (SURFACE_LOCK) {
+            surfaces = List.copyOf(SURFACES);
+        }
+
+        return surfaces.stream()
+                .map(surface -> surface.pick(
+                        client.level.dimension(),
+                        camera.position(),
+                        rayDirection,
+                        Math.min(surface.interactionReach(), surface.maxDistance())
+                ))
+                .flatMap(Optional::stream)
+                .min(Comparator.comparingDouble(GrapheneWorldSurfacePick::distance));
+    }
+
+    private static void tickPrimaryUse(Minecraft client, Optional<GrapheneWorldSurfacePick> pick) {
+        if (!client.options.keyUse.isDown()) {
+            pick.filter(GrapheneWorldSurfaceManager::isActivePrimarySurface).ifPresent(currentPick -> activePrimaryPick = currentPick);
+            releasePrimaryUse();
+            updateHoveredPick(pick);
+            return;
+        }
+
+        pick.filter(GrapheneWorldSurfaceManager::isActivePrimarySurface).ifPresent(currentPick -> {
+            activePrimaryPick = currentPick;
+            dispatchPrimaryDrag(currentPick);
+        });
+    }
+
+    private static boolean isActivePrimarySurface(GrapheneWorldSurfacePick pick) {
+        return activePrimaryPick != null && pick.surface() == activePrimaryPick.surface();
+    }
+
+    private static void beginPrimaryUse(GrapheneWorldSurfacePick pick) {
+        if (hoveredPick != null && hoveredPick.surface() != pick.surface()) {
+            clearHoveredPick();
+        } else {
+            hoveredPick = null;
+        }
+        activePrimaryPick = pick;
+        primaryUsePressed = true;
+        dispatchMouseMoved(pick);
         pick.surface().inputAdapter().setFocused(true);
         pick.surface().inputAdapter().mouseClicked(
-                GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                WORLD_SURFACE_BROWSER_BUTTON,
                 false,
                 pick.surfaceX(),
                 pick.surfaceY(),
                 pick.renderedWidth(),
                 pick.renderedHeight()
         );
+    }
+
+    private static void releasePrimaryUse() {
+        GrapheneWorldSurfacePick pick = activePrimaryPick;
+        primaryUsePressed = false;
+        activePrimaryPick = null;
+        if (pick == null) {
+            return;
+        }
+
         pick.surface().inputAdapter().mouseReleased(
-                GLFW.GLFW_MOUSE_BUTTON_LEFT,
+                WORLD_SURFACE_BROWSER_BUTTON,
                 pick.surfaceX(),
                 pick.surfaceY(),
                 pick.renderedWidth(),
                 pick.renderedHeight()
         );
+    }
+
+    private static void dispatchPrimaryDrag(GrapheneWorldSurfacePick pick) {
+        pick.surface().inputAdapter().mouseDragged(
+                WORLD_SURFACE_BROWSER_BUTTON,
+                pick.surfaceX(),
+                pick.surfaceY(),
+                pick.renderedWidth(),
+                pick.renderedHeight()
+        );
+    }
+
+    private static void updateHoveredPick(Optional<GrapheneWorldSurfacePick> pick) {
+        if (pick.isEmpty()) {
+            clearHoveredPick();
+            return;
+        }
+
+        GrapheneWorldSurfacePick currentPick = pick.get();
+        if (hoveredPick != null && hoveredPick.surface() != currentPick.surface()) {
+            clearHoveredPick();
+        }
+
+        hoveredPick = currentPick;
+        dispatchMouseMoved(currentPick);
+    }
+
+    private static void clearHoveredPick() {
+        GrapheneWorldSurfacePick pick = hoveredPick;
+        hoveredPick = null;
+        if (pick != null) {
+            pick.surface().inputAdapter().mouseExited();
+        }
+    }
+
+    private static void dispatchMouseMoved(GrapheneWorldSurfacePick pick) {
+        pick.surface().inputAdapter().mouseMoved(
+                pick.surfaceX(),
+                pick.surfaceY(),
+                pick.renderedWidth(),
+                pick.renderedHeight()
+        );
+    }
+
+    private static void clearSurfaceInputState(GrapheneWorldSurfaceImpl surface) {
+        if (activePrimaryPick != null && activePrimaryPick.surface() == surface) {
+            releasePrimaryUse();
+        }
+        if (hoveredPick != null && hoveredPick.surface() == surface) {
+            hoveredPick = null;
+            surface.inputAdapter().mouseExited();
+        }
     }
 }

@@ -45,6 +45,10 @@ public final class BrowserSurfaceInputAdapter {
         inputController.updateMousePosition(toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }
 
+    public void mouseExited() {
+        inputController.onMouseExited();
+    }
+
     public void mouseClicked(int button, boolean isDoubleClick, double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
         inputController.onMouseClicked(button, isDoubleClick, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }

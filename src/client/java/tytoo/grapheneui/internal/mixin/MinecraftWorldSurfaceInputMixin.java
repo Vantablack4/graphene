@@ -16,7 +16,7 @@ public abstract class MinecraftWorldSurfaceInputMixin {
 
     @Inject(method = "startUseItem", at = @At("HEAD"), cancellable = true)
     private void grapheneui$interactWithWorldSurface(CallbackInfo callbackInfo) {
-        if (!GrapheneWorldSurfaceManager.handlePrimaryClickFromCameraRay((Minecraft) (Object) this)) {
+        if (!GrapheneWorldSurfaceManager.handlePrimaryUseFromCameraRay((Minecraft) (Object) this)) {
             return;
         }
 

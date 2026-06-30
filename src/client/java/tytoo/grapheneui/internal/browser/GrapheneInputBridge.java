@@ -57,6 +57,19 @@ final class GrapheneInputBridge {
         browser.dispatchMouseEvent(event);
     }
 
+    void mouseExited(GrapheneBrowser browser, int x, int y, int modifiers) {
+        int cefModifiers = toCefMouseModifiers(modifiers);
+        CefMouseEvent event = new CefMouseEvent(
+                CefMouseEvent.MOUSEEVENT_EXITED,
+                x,
+                y,
+                cefModifiers,
+                CefMouseEvent.BUTTON_NONE,
+                1
+        );
+        browser.dispatchMouseEvent(event);
+    }
+
     void mouseDragged(GrapheneBrowser browser, double x, double y, int button) {
         int cefModifiers = toCefButtonDownModifier(button);
         CefMouseEvent event = new CefMouseEvent(

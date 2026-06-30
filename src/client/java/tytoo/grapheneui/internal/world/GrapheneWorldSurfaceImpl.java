@@ -52,6 +52,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     private GrapheneWorldSurfaceFacing facing;
     private GrapheneWorldSurfaceSide side;
     private double maxDistance;
+    private double interactionReach;
     private boolean renderWhenScreenOpen;
 
     GrapheneWorldSurfaceImpl(Identifier surfaceId, GrapheneWorldSurfaceConfig config) {
@@ -73,6 +74,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         this.facing = config.facing();
         this.side = config.side();
         this.maxDistance = config.maxDistance();
+        this.interactionReach = config.interactionReach();
         this.renderWhenScreenOpen = config.renderWhenScreenOpen();
     }
 
@@ -229,6 +231,20 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     }
 
     @Override
+    public double interactionReach() {
+        synchronized (stateLock) {
+            return interactionReach;
+        }
+    }
+
+    @Override
+    public void setInteractionReach(double interactionReach) {
+        synchronized (stateLock) {
+            this.interactionReach = requirePositive(interactionReach, "interactionReach");
+        }
+    }
+
+    @Override
     public boolean renderWhenScreenOpen() {
         synchronized (stateLock) {
             return renderWhenScreenOpen;
@@ -354,6 +370,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
                     facing,
                     side,
                     maxDistance,
+                    interactionReach,
                     renderWhenScreenOpen
             );
         }
@@ -570,6 +587,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
             GrapheneWorldSurfaceFacing facing,
             GrapheneWorldSurfaceSide side,
             double maxDistance,
+            double interactionReach,
             boolean renderWhenScreenOpen
     ) {
     }

@@ -61,6 +61,10 @@ public interface GrapheneWorldSurface extends AutoCloseable {
 
     void setMaxDistance(double maxDistance);
 
+    double interactionReach();
+
+    void setInteractionReach(double interactionReach);
+
     boolean renderWhenScreenOpen();
 
     void setRenderWhenScreenOpen(boolean renderWhenScreenOpen);

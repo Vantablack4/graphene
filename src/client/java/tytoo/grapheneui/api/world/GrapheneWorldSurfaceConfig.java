@@ -17,6 +17,7 @@ public final class GrapheneWorldSurfaceConfig {
     public static final int DEFAULT_SURFACE_HEIGHT = 256;
     public static final int DEFAULT_MAX_FPS = 30;
     public static final double DEFAULT_MAX_DISTANCE = 48.0D;
+    public static final double DEFAULT_INTERACTION_REACH = 64.0D;
     public static final float DEFAULT_WORLD_WIDTH = 2.0F;
     public static final float DEFAULT_WORLD_HEIGHT = 1.0F;
 
@@ -37,6 +38,7 @@ public final class GrapheneWorldSurfaceConfig {
     private final GrapheneWorldSurfaceFacing facing;
     private final GrapheneWorldSurfaceSide side;
     private final double maxDistance;
+    private final double interactionReach;
     private final boolean renderWhenScreenOpen;
 
     private GrapheneWorldSurfaceConfig(Builder builder) {
@@ -57,6 +59,7 @@ public final class GrapheneWorldSurfaceConfig {
         this.facing = Objects.requireNonNull(builder.facing, "facing");
         this.side = Objects.requireNonNull(builder.side, "side");
         this.maxDistance = builder.maxDistance;
+        this.interactionReach = builder.interactionReach;
         this.renderWhenScreenOpen = builder.renderWhenScreenOpen;
     }
 
@@ -136,6 +139,10 @@ public final class GrapheneWorldSurfaceConfig {
         return maxDistance;
     }
 
+    public double interactionReach() {
+        return interactionReach;
+    }
+
     public boolean renderWhenScreenOpen() {
         return renderWhenScreenOpen;
     }
@@ -191,6 +198,7 @@ public final class GrapheneWorldSurfaceConfig {
         private GrapheneWorldSurfaceFacing facing = GrapheneWorldSurfaceFacing.FIXED;
         private GrapheneWorldSurfaceSide side = GrapheneWorldSurfaceSide.DOUBLE_SIDED_READABLE;
         private double maxDistance = DEFAULT_MAX_DISTANCE;
+        private double interactionReach = DEFAULT_INTERACTION_REACH;
         private boolean renderWhenScreenOpen;
 
         private Builder(String url) {
@@ -297,6 +305,11 @@ public final class GrapheneWorldSurfaceConfig {
 
         public Builder maxDistance(double maxDistance) {
             this.maxDistance = requirePositive(maxDistance, "maxDistance");
+            return this;
+        }
+
+        public Builder interactionReach(double interactionReach) {
+            this.interactionReach = requirePositive(interactionReach, "interactionReach");
             return this;
         }
 
