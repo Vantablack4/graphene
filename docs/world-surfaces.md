@@ -91,6 +91,8 @@ globalThis.grapheneBridge.on("my-mod:surface-frame", (frame) => {
 - `CAMERA` full billboards face the camera while keeping the surface's top edge as close to world-up as possible.
 - `DOUBLE_SIDED_READABLE` chooses the camera-facing side each frame and flips the back-side UV mapping. This avoids
   drawing two coplanar translucent browser quads or exposing mirrored text.
+- `DOUBLE_SIDED_MIRRORED` is retained only as a deprecated binary/source compatibility alias for readable two-sided
+  rendering. It no longer exposes mirrored text and should not be used in new code.
 - Use a small number of surfaces. For many crops or NPCs, aggregate into one world overlay layer or only create world
   surfaces for selected/high-value objects.
 

@@ -383,7 +383,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         return switch (renderState.side) {
             case FRONT_ONLY -> cameraInFront ? QuadSide.FRONT : null;
             case BACK_ONLY -> cameraInFront ? null : QuadSide.BACK;
-            case DOUBLE_SIDED_READABLE -> cameraInFront ? QuadSide.FRONT : QuadSide.BACK;
+            case DOUBLE_SIDED_MIRRORED, DOUBLE_SIDED_READABLE -> cameraInFront ? QuadSide.FRONT : QuadSide.BACK;
         };
     }
 
