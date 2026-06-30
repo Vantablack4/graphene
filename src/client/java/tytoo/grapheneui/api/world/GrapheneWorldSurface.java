@@ -39,13 +39,21 @@ public interface GrapheneWorldSurface extends AutoCloseable {
 
     Quaternionf rotation();
 
+    GrapheneWorldSurfaceOrientation orientation();
+
     void setRotation(Quaternionfc rotation);
+
+    void setOrientation(GrapheneWorldSurfaceOrientation orientation);
 
     void setRotationDegrees(float pitch, float yaw, float roll);
 
     GrapheneWorldSurfaceFacing facing();
 
     void setFacing(GrapheneWorldSurfaceFacing facing);
+
+    GrapheneWorldSurfaceSide side();
+
+    void setSide(GrapheneWorldSurfaceSide side);
 
     double maxDistance();
 

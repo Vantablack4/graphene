@@ -21,7 +21,8 @@ GrapheneWorldSurface surface = GrapheneWorldSurfaces.create(
                 .surfaceSize(768, 384)
                 .resolution(768, 384)
                 .worldSize(2.25F, 1.125F)
-                .rotationDegrees(90.0F, 0.0F, 0.0F)
+                .horizontalUp()
+                .side(GrapheneWorldSurfaceSide.DOUBLE_SIDED_READABLE)
                 .maxDistance(64.0D)
                 .maxFps(30)
                 .build()
@@ -29,13 +30,33 @@ GrapheneWorldSurface surface = GrapheneWorldSurfaces.create(
 ```
 
 The local surface plane is centered at `position`. Its local X axis maps to width, local Y maps to height, and
-`rotationDegrees(pitch, yaw, roll)` controls how the plane is oriented in world space. A pitch of `90` lays the browser
-surface flat over a block for table-top UI.
+`orientation(...)` controls how the plane is oriented in world space. `horizontalUp()` lays the browser surface flat over
+a block for table-top UI with its front side facing upward.
 
-For nameplate-style in-world billboards:
+Common orientations:
 
 ```java
-surface.setFacing(GrapheneWorldSurfaceFacing.CAMERA);
+GrapheneWorldSurfaceConfig.builder(url).horizontalUp();                 // table-top, readable from above
+GrapheneWorldSurfaceConfig.builder(url).horizontalDown();               // ceiling/downward panel
+GrapheneWorldSurfaceConfig.builder(url).vertical(Direction.NORTH);      // wall/sign front faces north
+GrapheneWorldSurfaceConfig.builder(url).blockFace(Direction.UP);        // front normal follows a block face
+GrapheneWorldSurfaceConfig.builder(url).orientation(GrapheneWorldSurfaceOrientation.custom(rotation));
+```
+
+For nameplate-style in-world billboards, rotate the surface toward the camera:
+
+```java
+surface.setFacing(GrapheneWorldSurfaceFacing.CAMERA);      // full pitch/yaw billboard
+surface.setFacing(GrapheneWorldSurfaceFacing.CAMERA_YAW);  // upright yaw-only billboard
+```
+
+Side behavior is explicit so text does not become accidentally mirrored when the camera moves behind a surface:
+
+```java
+surface.setSide(GrapheneWorldSurfaceSide.FRONT_ONLY);
+surface.setSide(GrapheneWorldSurfaceSide.BACK_ONLY);
+surface.setSide(GrapheneWorldSurfaceSide.DOUBLE_SIDED_MIRRORED);
+surface.setSide(GrapheneWorldSurfaceSide.DOUBLE_SIDED_READABLE);
 ```
 
 Close surfaces directly or by owner:
@@ -68,6 +89,8 @@ globalThis.grapheneBridge.on("my-mod:surface-frame", (frame) => {
 - World surfaces render the browser texture only; native slots are still a screen-space overlay feature.
 - Input picking is intentionally not automatic yet. Consumers can still use `surface.inputAdapter()` when they have their
   own raycast-to-surface mapping.
+- `DOUBLE_SIDED_READABLE` chooses the camera-facing side each frame and flips the back-side UV mapping. This avoids
+  drawing two coplanar translucent browser quads.
 - Use a small number of surfaces. For many crops or NPCs, aggregate into one world overlay layer or only create world
   surfaces for selected/high-value objects.
 

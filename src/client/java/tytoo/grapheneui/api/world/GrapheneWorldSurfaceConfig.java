@@ -1,5 +1,6 @@
 package tytoo.grapheneui.api.world;
 
+import net.minecraft.core.Direction;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -34,6 +35,7 @@ public final class GrapheneWorldSurfaceConfig {
     private final float worldHeight;
     private final Quaternionf rotation;
     private final GrapheneWorldSurfaceFacing facing;
+    private final GrapheneWorldSurfaceSide side;
     private final double maxDistance;
     private final boolean renderWhenScreenOpen;
 
@@ -53,6 +55,7 @@ public final class GrapheneWorldSurfaceConfig {
         this.worldHeight = builder.worldHeight;
         this.rotation = new Quaternionf(builder.rotation);
         this.facing = Objects.requireNonNull(builder.facing, "facing");
+        this.side = Objects.requireNonNull(builder.side, "side");
         this.maxDistance = builder.maxDistance;
         this.renderWhenScreenOpen = builder.renderWhenScreenOpen;
     }
@@ -117,8 +120,16 @@ public final class GrapheneWorldSurfaceConfig {
         return new Quaternionf(rotation);
     }
 
+    public GrapheneWorldSurfaceOrientation orientation() {
+        return GrapheneWorldSurfaceOrientation.custom(rotation);
+    }
+
     public GrapheneWorldSurfaceFacing facing() {
         return facing;
+    }
+
+    public GrapheneWorldSurfaceSide side() {
+        return side;
     }
 
     public double maxDistance() {
@@ -178,6 +189,7 @@ public final class GrapheneWorldSurfaceConfig {
         private float worldHeight = DEFAULT_WORLD_HEIGHT;
         private Quaternionf rotation = new Quaternionf();
         private GrapheneWorldSurfaceFacing facing = GrapheneWorldSurfaceFacing.FIXED;
+        private GrapheneWorldSurfaceSide side = GrapheneWorldSurfaceSide.DOUBLE_SIDED_READABLE;
         private double maxDistance = DEFAULT_MAX_DISTANCE;
         private boolean renderWhenScreenOpen;
 
@@ -243,6 +255,11 @@ public final class GrapheneWorldSurfaceConfig {
             return this;
         }
 
+        public Builder orientation(GrapheneWorldSurfaceOrientation orientation) {
+            this.rotation = Objects.requireNonNull(orientation, "orientation").rotation();
+            return this;
+        }
+
         public Builder rotationDegrees(float pitch, float yaw, float roll) {
             this.rotation = new Quaternionf().rotationXYZ(
                     (float) Math.toRadians(pitch),
@@ -252,8 +269,29 @@ public final class GrapheneWorldSurfaceConfig {
             return this;
         }
 
+        public Builder horizontalUp() {
+            return orientation(GrapheneWorldSurfaceOrientation.horizontalUp());
+        }
+
+        public Builder horizontalDown() {
+            return orientation(GrapheneWorldSurfaceOrientation.horizontalDown());
+        }
+
+        public Builder vertical(Direction front) {
+            return orientation(GrapheneWorldSurfaceOrientation.vertical(front));
+        }
+
+        public Builder blockFace(Direction front) {
+            return orientation(GrapheneWorldSurfaceOrientation.blockFace(front));
+        }
+
         public Builder facing(GrapheneWorldSurfaceFacing facing) {
             this.facing = Objects.requireNonNull(facing, "facing");
+            return this;
+        }
+
+        public Builder side(GrapheneWorldSurfaceSide side) {
+            this.side = Objects.requireNonNull(side, "side");
             return this;
         }
 

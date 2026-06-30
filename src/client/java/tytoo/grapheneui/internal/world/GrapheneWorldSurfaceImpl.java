@@ -14,6 +14,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
+import org.joml.Vector3f;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
 import tytoo.grapheneui.api.nativeui.GrapheneNativeSlots;
 import tytoo.grapheneui.api.surface.BrowserSurface;
@@ -22,6 +23,8 @@ import tytoo.grapheneui.api.surface.BrowserSurfaceTextureFrame;
 import tytoo.grapheneui.api.world.GrapheneWorldSurface;
 import tytoo.grapheneui.api.world.GrapheneWorldSurfaceConfig;
 import tytoo.grapheneui.api.world.GrapheneWorldSurfaceFacing;
+import tytoo.grapheneui.api.world.GrapheneWorldSurfaceOrientation;
+import tytoo.grapheneui.api.world.GrapheneWorldSurfaceSide;
 import tytoo.grapheneui.internal.mc.McClient;
 
 import java.util.Objects;
@@ -42,6 +45,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     private float worldHeight;
     private Quaternionf rotation;
     private GrapheneWorldSurfaceFacing facing;
+    private GrapheneWorldSurfaceSide side;
     private double maxDistance;
     private boolean renderWhenScreenOpen;
 
@@ -62,6 +66,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         this.worldHeight = config.worldHeight();
         this.rotation = config.rotation();
         this.facing = config.facing();
+        this.side = config.side();
         this.maxDistance = config.maxDistance();
         this.renderWhenScreenOpen = config.renderWhenScreenOpen();
     }
@@ -149,10 +154,22 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     }
 
     @Override
+    public GrapheneWorldSurfaceOrientation orientation() {
+        synchronized (stateLock) {
+            return GrapheneWorldSurfaceOrientation.custom(rotation);
+        }
+    }
+
+    @Override
     public void setRotation(Quaternionfc rotation) {
         synchronized (stateLock) {
             this.rotation = new Quaternionf(Objects.requireNonNull(rotation, "rotation"));
         }
+    }
+
+    @Override
+    public void setOrientation(GrapheneWorldSurfaceOrientation orientation) {
+        setRotation(Objects.requireNonNull(orientation, "orientation").rotation());
     }
 
     @Override
@@ -175,6 +192,20 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     public void setFacing(GrapheneWorldSurfaceFacing facing) {
         synchronized (stateLock) {
             this.facing = Objects.requireNonNull(facing, "facing");
+        }
+    }
+
+    @Override
+    public GrapheneWorldSurfaceSide side() {
+        synchronized (stateLock) {
+            return side;
+        }
+    }
+
+    @Override
+    public void setSide(GrapheneWorldSurfaceSide side) {
+        synchronized (stateLock) {
+            this.side = Objects.requireNonNull(side, "side");
         }
     }
 
@@ -247,6 +278,12 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
             return;
         }
 
+        Quaternionf effectiveRotation = resolveRotation(renderState, cameraPosition);
+        QuadSide quadSide = resolveQuadSide(renderState, cameraPosition, effectiveRotation);
+        if (quadSide == null) {
+            return;
+        }
+
         RenderType renderType = RenderTypes.entityTranslucent(textureFrame.textureId(), false);
         PoseStack poseStack = context.poseStack();
         poseStack.pushPose();
@@ -256,11 +293,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
                     renderState.position.y - cameraPosition.y,
                     renderState.position.z - cameraPosition.z
             );
-            if (renderState.facing == GrapheneWorldSurfaceFacing.CAMERA) {
-                poseStack.mulPose(camera.rotation());
-            } else {
-                poseStack.mulPose(renderState.rotation);
-            }
+            poseStack.mulPose(effectiveRotation);
             context.submitNodeCollector().submitCustomGeometry(
                     poseStack,
                     renderType,
@@ -269,7 +302,8 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
                             buffer,
                             textureFrame,
                             renderState.worldWidth,
-                            renderState.worldHeight
+                            renderState.worldHeight,
+                            quadSide
                     )
             );
         } finally {
@@ -286,10 +320,68 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
                     worldHeight,
                     new Quaternionf(rotation),
                     facing,
+                    side,
                     maxDistance,
                     renderWhenScreenOpen
             );
         }
+    }
+
+    private static Quaternionf resolveRotation(RenderState renderState, Vec3 cameraPosition) {
+        if (renderState.facing == GrapheneWorldSurfaceFacing.CAMERA) {
+            return faceCameraRotation(renderState.position, cameraPosition);
+        }
+        if (renderState.facing == GrapheneWorldSurfaceFacing.CAMERA_YAW) {
+            return faceCameraYawRotation(renderState.position, cameraPosition);
+        }
+
+        return new Quaternionf(renderState.rotation);
+    }
+
+    private static Quaternionf faceCameraRotation(Vec3 position, Vec3 cameraPosition) {
+        Vec3 toCamera = cameraPosition.subtract(position);
+        if (!toCamera.isFinite() || toCamera.lengthSqr() < 1.0E-6D) {
+            return new Quaternionf();
+        }
+
+        Vec3 normal = toCamera.normalize();
+        return new Quaternionf().rotationTo(
+                0.0F,
+                0.0F,
+                1.0F,
+                (float) normal.x,
+                (float) normal.y,
+                (float) normal.z
+        );
+    }
+
+    private static Quaternionf faceCameraYawRotation(Vec3 position, Vec3 cameraPosition) {
+        double deltaX = cameraPosition.x - position.x;
+        double deltaZ = cameraPosition.z - position.z;
+        double horizontalLengthSquared = deltaX * deltaX + deltaZ * deltaZ;
+        if (horizontalLengthSquared < 1.0E-6D) {
+            return new Quaternionf();
+        }
+
+        return new Quaternionf().rotationY((float) Math.atan2(deltaX, deltaZ));
+    }
+
+    private static QuadSide resolveQuadSide(RenderState renderState, Vec3 cameraPosition, Quaternionf effectiveRotation) {
+        boolean cameraInFront = cameraInFrontOfSurface(renderState.position, cameraPosition, effectiveRotation);
+        return switch (renderState.side) {
+            case FRONT_ONLY -> cameraInFront ? QuadSide.FRONT : null;
+            case BACK_ONLY -> cameraInFront ? null : QuadSide.BACK;
+            case DOUBLE_SIDED_MIRRORED -> QuadSide.FRONT;
+            case DOUBLE_SIDED_READABLE -> cameraInFront ? QuadSide.FRONT : QuadSide.BACK;
+        };
+    }
+
+    private static boolean cameraInFrontOfSurface(Vec3 position, Vec3 cameraPosition, Quaternionf effectiveRotation) {
+        Vector3f normal = effectiveRotation.transformPositiveZ(new Vector3f());
+        double deltaX = cameraPosition.x - position.x;
+        double deltaY = cameraPosition.y - position.y;
+        double deltaZ = cameraPosition.z - position.z;
+        return deltaX * normal.x + deltaY * normal.y + deltaZ * normal.z >= 0.0D;
     }
 
     private void renderQuad(
@@ -297,23 +389,32 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
             VertexConsumer buffer,
             BrowserSurfaceTextureFrame frame,
             float width,
-            float height
+            float height,
+            QuadSide side
     ) {
         float halfWidth = width * 0.5F;
         float halfHeight = height * 0.5F;
-        vertex(buffer, pose, -halfWidth, halfHeight, 0.0F, frame.u0(), frame.v0());
-        vertex(buffer, pose, -halfWidth, -halfHeight, 0.0F, frame.u0(), frame.v1());
-        vertex(buffer, pose, halfWidth, -halfHeight, 0.0F, frame.u1(), frame.v1());
-        vertex(buffer, pose, halfWidth, halfHeight, 0.0F, frame.u1(), frame.v0());
+        if (side == QuadSide.FRONT) {
+            vertex(buffer, pose, -halfWidth, halfHeight, 0.0F, frame.u0(), frame.v0(), 1.0F);
+            vertex(buffer, pose, -halfWidth, -halfHeight, 0.0F, frame.u0(), frame.v1(), 1.0F);
+            vertex(buffer, pose, halfWidth, -halfHeight, 0.0F, frame.u1(), frame.v1(), 1.0F);
+            vertex(buffer, pose, halfWidth, halfHeight, 0.0F, frame.u1(), frame.v0(), 1.0F);
+            return;
+        }
+
+        vertex(buffer, pose, halfWidth, halfHeight, 0.0F, frame.u0(), frame.v0(), -1.0F);
+        vertex(buffer, pose, halfWidth, -halfHeight, 0.0F, frame.u0(), frame.v1(), -1.0F);
+        vertex(buffer, pose, -halfWidth, -halfHeight, 0.0F, frame.u1(), frame.v1(), -1.0F);
+        vertex(buffer, pose, -halfWidth, halfHeight, 0.0F, frame.u1(), frame.v0(), -1.0F);
     }
 
-    private void vertex(VertexConsumer buffer, PoseStack.Pose pose, float x, float y, float z, float u, float v) {
+    private void vertex(VertexConsumer buffer, PoseStack.Pose pose, float x, float y, float z, float u, float v, float normalZ) {
         buffer.addVertex(pose, x, y, z)
                 .setColor(WHITE)
                 .setUv(u, v)
                 .setOverlay(OverlayTexture.NO_OVERLAY)
                 .setLight(FULL_BRIGHT_LIGHT)
-                .setNormal(pose, 0.0F, 0.0F, 1.0F);
+                .setNormal(pose, 0.0F, 0.0F, normalZ);
     }
 
     private static float requirePositive(float value, String name) {
@@ -339,8 +440,14 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
             float worldHeight,
             Quaternionf rotation,
             GrapheneWorldSurfaceFacing facing,
+            GrapheneWorldSurfaceSide side,
             double maxDistance,
             boolean renderWhenScreenOpen
     ) {
+    }
+
+    private enum QuadSide {
+        FRONT,
+        BACK
     }
 }
