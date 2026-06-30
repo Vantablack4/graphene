@@ -22,6 +22,7 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -235,11 +236,34 @@ public final class GrapheneCefInstaller {
     }
 
     private static void configurePlatformCompatibility(CefAppBuilder cefAppBuilder) {
-        if (!GraphenePlatform.isLinux()) {
-            return;
+        List<String> compatibilityArgs = platformCompatibilityArgs(
+                GraphenePlatform.isMac(),
+                GraphenePlatform.isLinux(),
+                GraphenePlatform.isWaylandSession()
+        );
+        if (!compatibilityArgs.isEmpty()) {
+            cefAppBuilder.addJcefArgs(compatibilityArgs.toArray(String[]::new));
         }
 
-        cefAppBuilder.addJcefArgs(
+        if (GraphenePlatform.isLinux() && GraphenePlatform.isWaylandSession()) {
+            LOGGER.info("Detected Wayland session, forcing CEF to X11 compatibility mode");
+        }
+    }
+
+    static List<String> platformCompatibilityArgs(boolean mac, boolean linux, boolean waylandSession) {
+        if (mac) {
+            return List.of(
+                    "--disable-gpu",
+                    "--disable-gpu-compositing",
+                    "--in-process-gpu"
+            );
+        }
+
+        if (!linux) {
+            return List.of();
+        }
+
+        List<String> args = new ArrayList<>(List.of(
                 "--no-sandbox",
                 "--password-store=basic",
                 "--disable-background-networking",
@@ -250,14 +274,13 @@ public final class GrapheneCefInstaller {
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--disable-features=MediaRouter,OptimizationHints,AutofillServerCommunication,CertificateTransparencyComponentUpdater,Translate"
-        );
+        ));
 
-        if (!GraphenePlatform.isWaylandSession()) {
-            return;
+        if (waylandSession) {
+            args.add("--ozone-platform=x11");
         }
 
-        cefAppBuilder.addJcefArgs("--ozone-platform=x11");
-        LOGGER.info("Detected Wayland session, forcing CEF to X11 compatibility mode");
+        return args;
     }
 
     private static int findRandomPort() {
