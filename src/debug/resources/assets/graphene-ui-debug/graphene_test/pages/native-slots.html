@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta content="width=device-width, initial-scale=1" name="viewport">
+    <title>Graphene Native Slots Test</title>
+    <link href="../styles/native-slots.css" rel="stylesheet">
+    <script defer src="../scripts/native-slots.js"></script>
+</head>
+<body>
+<h1>Native Slots</h1>
+<p><a href="tests.html">Back to tests page</a></p>
+
+<div id="native-slot-status">Native slot bridge: connecting...</div>
+
+<section class="grid">
+    <article>
+        <h2>Item</h2>
+        <div class="native-slot" id="native-item"></div>
+    </article>
+    <article>
+        <h2>Block</h2>
+        <div class="native-slot" id="native-block"></div>
+    </article>
+    <article>
+        <h2>Head</h2>
+        <div class="native-slot" id="native-head"></div>
+    </article>
+    <article>
+        <h2>Skin</h2>
+        <div class="native-slot native-slot-tall" id="native-skin"></div>
+    </article>
+    <article>
+        <h2>Entity</h2>
+        <div class="native-slot native-slot-tall" id="native-entity"></div>
+    </article>
+    <article>
+        <h2>Moving</h2>
+        <div class="motion-track">
+            <div class="native-slot native-slot-small" id="native-moving"></div>
+        </div>
+    </article>
+</section>
+
+<div class="controls">
+    <button id="toggle-motion" type="button">Toggle Motion</button>
+    <button id="resize-item" type="button">Resize Item</button>
+    <button id="flush-slots" type="button">Flush Slots</button>
+</div>
+
+<pre id="native-slot-log">No native slot messages yet.</pre>
+</body>
+</html>

@@ -17,6 +17,7 @@ It embeds Chromium via JCEF, so you can render HTML/CSS/JS in Minecraft screens 
 - `BrowserSurface`: off-screen browser surface with rendering, navigation, sizing, and input mapping
 - `GrapheneWebViewWidget`: Minecraft widget wrapper around `BrowserSurface`
 - `GrapheneBridge`: Java <-> JS event/request messaging
+- `GrapheneNativeSlots`: vanilla Minecraft render overlays measured from DOM rectangles
 
 ## Runtime Model
 
@@ -39,6 +40,7 @@ If nothing is registered and Graphene is used, Graphene throws an `IllegalStateE
 4. Bridge bootstrap scripts are injected.
 5. JavaScript sends `ready`.
 6. Java and JS exchange events and requests.
+7. Optional native slots reserve DOM rectangles for vanilla Minecraft item, block, head, skin, and entity rendering.
 
 ## Next
 
@@ -46,6 +48,7 @@ If nothing is registered and Graphene is used, Graphene throws an `IllegalStateE
 - First screen integration: [Quickstart](quickstart.md)
 - Java <-> JS contracts: [Bridge](bridge.md)
 - Rendering and sizing controls: [Advanced Surface](advanced-surface.md)
+- Vanilla renderer overlays: [Native Slots](native-slots.md)
 
 ---
 

@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 import org.jspecify.annotations.NonNull;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
+import tytoo.grapheneui.api.nativeui.GrapheneNativeSlots;
 import tytoo.grapheneui.api.surface.BrowserSurface;
 import tytoo.grapheneui.api.surface.BrowserSurfaceConfig;
 import tytoo.grapheneui.api.surface.BrowserSurfaceInputAdapter;
@@ -88,6 +89,10 @@ public class GrapheneWebViewWidget extends AbstractWidget implements Closeable {
         return surface.bridge();
     }
 
+    public GrapheneNativeSlots nativeSlots() {
+        return surface.nativeSlots();
+    }
+
     @SuppressWarnings("unused")
     public void addLoadListener(GrapheneLoadListener loadListener) {
         surface.addLoadListener(loadListener);
@@ -149,6 +154,12 @@ public class GrapheneWebViewWidget extends AbstractWidget implements Closeable {
 
         if (surface.isLoading()) {
             drawLoadingOverlay(graphics);
+        }
+
+        if (isMouseOver(mouseX, mouseY)) {
+            surface.nativeSlots().setPointer(mouseX, mouseY);
+        } else {
+            surface.nativeSlots().clearPointer();
         }
 
         surface.render(graphics, getX(), getY(), getWidth(), getHeight());

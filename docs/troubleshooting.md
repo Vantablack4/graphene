@@ -95,6 +95,42 @@ Fix:
 - Re-check `setViewBox(...)` usage.
 - Use `toBrowserPoint(...)` for custom input forwarding.
 
+## Native Slot Misaligned Or Missing
+
+Symptom:
+
+- Item, block, head, skin, or entity slots render in the wrong place or do not render.
+
+Likely cause:
+
+- Placeholder element has no size or is not connected to the DOM.
+- `surface.render(...)` dimensions do not match the input/widget dimensions.
+- A `viewBox` crop hides the slot.
+- The page did not load `globalThis.grapheneNativeSlots` yet.
+
+Fix:
+
+- Give the placeholder element an explicit width and height.
+- Keep widget size, input forwarding size, and render size aligned.
+- Check `setViewBox(...)` and reset it while debugging.
+- In DevTools, verify `globalThis.grapheneNativeSlots.measureNow("<slot-id>")`.
+
+## Native Entity Slot Does Not Render
+
+Symptom:
+
+- Item and block slots render, but entity slots are blank.
+
+Likely cause:
+
+- The client has no loaded world level.
+- Entity id is invalid or unavailable under current feature flags.
+
+Fix:
+
+- Test entity slots while connected to a world or server.
+- Use vanilla ids such as `minecraft:zombie` first.
+
 ## Asset URL 404 Or Blank Page
 
 Symptom:

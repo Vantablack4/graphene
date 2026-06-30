@@ -6,14 +6,19 @@ import net.minecraft.util.profiling.Profiler;
 import net.minecraft.util.profiling.ProfilerFiller;
 import org.cef.CefBrowserSettings;
 import org.cef.CefClient;
+import org.cef.browser.CefBrowser;
+import org.cef.browser.CefFrame;
 import org.cef.browser.CefRequestContext;
+import org.cef.network.CefRequest;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
+import tytoo.grapheneui.api.nativeui.GrapheneNativeSlots;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceLoadListenerScope;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceSizingState;
 import tytoo.grapheneui.internal.browser.GrapheneBrowser;
 import tytoo.grapheneui.internal.core.GrapheneCoreServices;
 import tytoo.grapheneui.internal.mc.McWindowScale;
+import tytoo.grapheneui.internal.nativeui.GrapheneNativeSlotRegistry;
 
 import java.awt.*;
 import java.util.Objects;
@@ -40,6 +45,7 @@ public final class BrowserSurface implements AutoCloseable {
 
     private final GrapheneBrowser browser;
     private final GrapheneBridge bridge;
+    private final GrapheneNativeSlotRegistry nativeSlots;
     private final BrowserSurfaceSizingState sizingState;
     private final BrowserSurfaceLoadListenerScope loadListenerScope;
     private final GrapheneCoreServices services;
@@ -73,8 +79,15 @@ public final class BrowserSurface implements AutoCloseable {
                 config.toCefBrowserSettings()
         );
         this.bridge = services.runtimeInternal().attachBridge(this.browser);
-        this.browser.createImmediately();
+        this.nativeSlots = new GrapheneNativeSlotRegistry(this.bridge);
         this.loadListenerScope = new BrowserSurfaceLoadListenerScope(this.browser, services.runtimeInternal().getLoadEventBus());
+        this.loadListenerScope.add(new GrapheneLoadListener() {
+            @Override
+            public void onLoadStart(CefBrowser browser, CefFrame frame, CefRequest.TransitionType transitionType) {
+                nativeSlots.clearPageSlots();
+            }
+        });
+        this.browser.createImmediately();
         this.browser.wasResizedTo(sizingState.resolutionWidth(), sizingState.resolutionHeight());
         if (builder.owner != null) {
             services.surfaceManager().register(builder.owner, this);
@@ -91,6 +104,10 @@ public final class BrowserSurface implements AutoCloseable {
 
     public GrapheneBridge bridge() {
         return bridge;
+    }
+
+    public GrapheneNativeSlots nativeSlots() {
+        return nativeSlots;
     }
 
     public boolean canGoBack() {
@@ -114,21 +131,25 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     public void loadUrl(String url) {
+        nativeSlots.clearPageSlots();
         services.runtimeInternal().onNavigationRequested(browser);
         browser.loadURL(url);
     }
 
     public void goBack() {
+        nativeSlots.clearPageSlots();
         services.runtimeInternal().onNavigationRequested(browser);
         browser.goBack();
     }
 
     public void goForward() {
+        nativeSlots.clearPageSlots();
         services.runtimeInternal().onNavigationRequested(browser);
         browser.goForward();
     }
 
     public void reload() {
+        nativeSlots.clearPageSlots();
         services.runtimeInternal().onNavigationRequested(browser);
         browser.reload();
     }
@@ -226,6 +247,10 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     public void render(GuiGraphicsExtractor graphics, int x, int y, int width, int height) {
+        if (closed) {
+            return;
+        }
+
         ProfilerFiller profiler = Profiler.get();
         profiler.push("graphene");
         try {
@@ -244,6 +269,7 @@ public final class BrowserSurface implements AutoCloseable {
 
         closed = true;
         services.surfaceManager().unregister(this);
+        nativeSlots.close();
         loadListenerScope.close();
         services.runtimeInternal().detachBridge(browser);
         browser.close();
@@ -275,6 +301,20 @@ public final class BrowserSurface implements AutoCloseable {
                     y,
                     width,
                     height,
+                    sizingState.viewBoxX(),
+                    sizingState.viewBoxY(),
+                    sizingState.viewBoxWidth(),
+                    sizingState.viewBoxHeight()
+            );
+            nativeSlots.render(
+                    profiler,
+                    graphics,
+                    x,
+                    y,
+                    width,
+                    height,
+                    sizingState.resolutionWidth(),
+                    sizingState.resolutionHeight(),
                     sizingState.viewBoxX(),
                     sizingState.viewBoxY(),
                     sizingState.viewBoxWidth(),

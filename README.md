@@ -18,6 +18,7 @@ Instead of writing every screen directly with Minecraft rendering primitives, yo
 
 - build rich, responsive interfaces using browser capabilities;
 - connect those interfaces to your mod logic through Graphene's API;
+- reserve DOM rectangles for vanilla Minecraft renderers such as items, blocks, player heads, skins, and entities;
 - iterate on UI faster with familiar web tooling and patterns;
 - keep the integration focused on Fabric + Minecraft 26.1.2.
 
@@ -51,7 +52,7 @@ This Vantablack fork is published through GitHub Packages.
 <dependency>
   <groupId>com.vantablack4.mc</groupId>
   <artifactId>graphene-ui</artifactId>
-  <version>1.7.2-vb.3+mc26.1.2</version>
+  <version>1.7.2-vb.4+mc26.1.2</version>
 </dependency>
 ```
 
@@ -67,7 +68,7 @@ repositories {
 }
 
 dependencies {
-    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.3+mc26.1.2")
+    implementation("com.vantablack4.mc:graphene-ui:1.7.2-vb.4+mc26.1.2")
 }
 ```
 

@@ -35,9 +35,12 @@ HTTP server settings are merged from container configs:
 `BrowserSurface.close()` performs:
 
 1. owner unregistration
-2. load listener scope cleanup
-3. bridge detach
-4. browser close
+2. native slot cleanup
+3. load listener scope cleanup
+4. bridge detach
+5. browser close
+
+Native page slots are also cleared when `BrowserSurface` starts navigation or receives a CEF load-start event.
 
 ## Screen Auto-Close
 
@@ -69,6 +72,14 @@ When disabled, you must close widgets and surfaces manually.
 - During render, Graphene retries bootstrap injection when needed.
 - On JS `ready`, queued outbound Java messages flush and `onReady` listeners run.
 - On close, bridge listeners/handlers/queue/pending requests are cleared.
+
+## Native Slot Lifecycle
+
+- The page registers slots through `globalThis.grapheneNativeSlots`.
+- Slots are scoped to the browser surface and current page id.
+- The JS helper sends full frame snapshots, removed slot ids, and page resets over the bridge.
+- Java clears page-owned slots on navigation, load start, reset, and surface close.
+- Native slots do not own keyboard focus or mouse clicks; browser input remains the source of interaction.
 
 ## Subscription Lifecycle
 

@@ -96,6 +96,12 @@ For manual forwarding, use:
 
 These apply current viewBox and rendered dimensions.
 
+## Native Slot Coordinates
+
+Native slots use the same surface, resolution, and viewBox model.
+The page-side helper measures DOM rectangles in CSS viewport coordinates, and `BrowserSurface` maps them into the rectangle passed to `render(...)`.
+If a custom renderer or input adapter uses a different rendered size than `surface.render(...)`, native slots and browser input will not line up.
+
 ## Ownership And Cleanup
 
 Owner-tracked lifecycle:
@@ -115,4 +121,4 @@ Always close surfaces you create.
 
 ---
 
-Next: [Troubleshooting](troubleshooting.md)
+Next: [Native Slots](native-slots.md)

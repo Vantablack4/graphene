@@ -66,6 +66,7 @@ Notes:
 
 - The widget manages rendering and input forwarding for the browser surface.
 - `ScreenMixin` auto-closes tracked web views by default when the screen closes.
+- To render vanilla Minecraft items, blocks, heads, skins, or entities inside your web layout, use [Native Slots](native-slots.md).
 
 ## 3) Put Assets Under Your Namespace
 

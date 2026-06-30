@@ -21,6 +21,7 @@ Recommended reading order:
 - [Lifecycle](lifecycle.md)
 - [Debugging](debugging.md)
 - [Advanced Surface](advanced-surface.md)
+- [Native Slots](native-slots.md)
 - [Troubleshooting](troubleshooting.md)
 - [Testing](testing.md)
 

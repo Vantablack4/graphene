@@ -1,0 +1,100 @@
+body {
+    font-family: sans-serif;
+    margin: 16px;
+    line-height: 1.4;
+}
+
+button {
+    font: inherit;
+    padding: 6px 8px;
+}
+
+#native-slot-status {
+    font-weight: 700;
+    margin: 8px 0 16px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+article {
+    border: 1px solid #888;
+    border-radius: 6px;
+    padding: 10px;
+    min-height: 138px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+h2 {
+    font-size: 16px;
+    margin: 0 0 8px;
+}
+
+.native-slot {
+    width: 72px;
+    height: 72px;
+    background: rgba(0, 0, 0, 0.18);
+    outline: 1px dashed rgba(255, 255, 255, 0.65);
+}
+
+.native-slot-large {
+    width: 112px;
+    height: 112px;
+}
+
+.native-slot-tall {
+    width: 92px;
+    height: 128px;
+}
+
+.native-slot-small {
+    width: 48px;
+    height: 48px;
+}
+
+.motion-track {
+    width: 130px;
+    height: 72px;
+    position: relative;
+}
+
+#native-moving {
+    position: absolute;
+    left: 0;
+    top: 12px;
+    animation: native-slot-motion 2.5s ease-in-out infinite alternate;
+}
+
+.motion-paused #native-moving {
+    animation-play-state: paused;
+}
+
+.controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+pre {
+    background: #111;
+    color: #eee;
+    padding: 10px;
+    border-radius: 6px;
+    overflow: auto;
+    max-height: 260px;
+}
+
+@keyframes native-slot-motion {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(74px);
+    }
+}

@@ -20,10 +20,11 @@ Current test classes include:
 - `GrapheneHttpServerRuntimeTest`
 - `GrapheneMimeTypesTest`
 - `BrowserSurfaceViewportMapperTest`
+- `GrapheneNativeSlotBoundsMapperTest`
 - `GrapheneDebugLogSelectorTest`
 - `GrapheneLinuxKeyEventPlatformResolverTest`
 
-These cover bridge serialization and routing behavior, URL/path normalization, HTTP server behavior, MIME detection, viewport/input mapping, and debug selector parsing.
+These cover bridge serialization and routing behavior, URL/path normalization, HTTP server behavior, MIME detection, viewport/input/native-slot mapping, and debug selector parsing.
 
 ## In-Game Debug Validation
 
@@ -64,6 +65,8 @@ For bridge-facing features, prefer both:
 
 1. unit tests for core logic
 2. debug-page/manual verification for integration behavior
+
+For native slots, unit-test coordinate and state mapping in JUnit, then verify visual behavior in the debug client with `graphene_test/pages/native-slots.html`.
 
 ---
 
