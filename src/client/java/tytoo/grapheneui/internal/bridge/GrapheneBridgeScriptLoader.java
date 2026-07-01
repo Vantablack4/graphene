@@ -5,6 +5,7 @@ import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 
 final class GrapheneBridgeScriptLoader {
@@ -26,7 +27,7 @@ final class GrapheneBridgeScriptLoader {
 
     private static List<String> loadScripts() {
         ClassLoader classLoader = GrapheneBridgeScriptLoader.class.getClassLoader();
-        List<String> loadedScripts = new java.util.ArrayList<>(SCRIPT_RESOURCE_PATHS.size());
+        List<String> loadedScripts = new ArrayList<>(SCRIPT_RESOURCE_PATHS.size());
         for (String scriptResourcePath : SCRIPT_RESOURCE_PATHS) {
             loadedScripts.add(loadSingleScript(classLoader, scriptResourcePath));
         }

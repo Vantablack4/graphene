@@ -58,6 +58,11 @@ public final class BrowserSurfaceConfig {
         return new BrowserSurfaceConfig(mergedFrameRate, true, settingsCustomizer);
     }
 
+    public BrowserSurfaceConfig withMaxFpsOverride(int maxFps) {
+        validateFrameRate(maxFps);
+        return new BrowserSurfaceConfig(maxFps, true, settingsCustomizer);
+    }
+
     public BrowserSurfaceConfig withSettingsCustomizer(Consumer<CefBrowserSettings> settingsCustomizer) {
         Consumer<CefBrowserSettings> nonNullCustomizer = Objects.requireNonNull(settingsCustomizer, SETTINGS_CUSTOMIZER);
         return new BrowserSurfaceConfig(

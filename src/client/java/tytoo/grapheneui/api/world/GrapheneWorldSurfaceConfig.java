@@ -45,7 +45,7 @@ public final class GrapheneWorldSurfaceConfig {
         this.url = requireNonBlank(builder.url, "url");
         this.surfaceId = builder.surfaceId;
         this.owner = builder.owner;
-        this.surfaceConfig = Objects.requireNonNull(builder.surfaceConfig, "surfaceConfig").withMaxFps(builder.maxFps);
+        this.surfaceConfig = Objects.requireNonNull(builder.surfaceConfig, "surfaceConfig").withMaxFpsOverride(builder.maxFps);
         this.surfaceWidth = builder.surfaceWidth;
         this.surfaceHeight = builder.surfaceHeight;
         this.resolutionWidth = builder.resolutionWidth;

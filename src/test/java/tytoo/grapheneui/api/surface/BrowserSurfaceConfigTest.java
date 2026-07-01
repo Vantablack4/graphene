@@ -23,6 +23,15 @@ final class BrowserSurfaceConfigTest {
     }
 
     @Test
+    void withMaxFpsOverrideReplacesExplicitValue() {
+        BrowserSurfaceConfig config = BrowserSurfaceConfig.defaults()
+                .withMaxFps(144)
+                .withMaxFpsOverride(30);
+
+        assertEquals(30, config.toCefBrowserSettings().windowless_frame_rate);
+    }
+
+    @Test
     void builderMaxFpsKeepsLargestExplicitValue() {
         BrowserSurfaceConfig config = BrowserSurfaceConfig.builder()
                 .maxFps(72)
