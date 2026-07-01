@@ -20,6 +20,7 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
     private static final GrapheneDebugLogger DEBUG_LOGGER = GrapheneDebugLogger.of(GrapheneBridgeEndpoint.class);
 
     private static final String CHANNEL_NAME = "channel";
+    private static final String COALESCING_KEY_NAME = "coalescingKey";
     private static final String TIMEOUT_NAME = "timeout";
     private static final long BOOTSTRAP_FALLBACK_RETRY_NANOS = TimeUnit.MILLISECONDS.toNanos(500);
 
@@ -101,6 +102,26 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
         DEBUG_LOGGER.debugIfEnabled(logger -> {
             int payloadSize = payloadJson == null ? 0 : payloadJson.length();
             logger.debug("Queued bridge event channel={} payloadSize={}", validatedChannel, payloadSize);
+        });
+    }
+
+    @Override
+    public void emitLatest(String channel, String coalescingKey, String payloadJson) {
+        String validatedChannel = validateChannel(channel);
+        String validatedCoalescingKey = validateCoalescingKey(coalescingKey);
+        JsonElement payload = codec.parsePayloadJson(payloadJson);
+        ensureOpen();
+
+        String outboundJson = codec.createOutboundPacketJson(GrapheneBridgeProtocol.KIND_EVENT, null, validatedChannel, payload);
+        outboundQueue.queueLatestOrDispatch(validatedChannel + '\u0000' + validatedCoalescingKey, outboundJson);
+        DEBUG_LOGGER.debugIfEnabled(logger -> {
+            int payloadSize = payloadJson == null ? 0 : payloadJson.length();
+            logger.debug(
+                    "Queued latest bridge event channel={} key={} payloadSize={}",
+                    validatedChannel,
+                    validatedCoalescingKey,
+                    payloadSize
+            );
         });
     }
 
@@ -293,6 +314,15 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
         }
 
         return channel;
+    }
+
+    private String validateCoalescingKey(String coalescingKey) {
+        Objects.requireNonNull(coalescingKey, COALESCING_KEY_NAME);
+        if (coalescingKey.isBlank()) {
+            throw new IllegalArgumentException(COALESCING_KEY_NAME + " must not be blank");
+        }
+
+        return coalescingKey;
     }
 
     private Duration validateTimeout(Duration timeout) {

@@ -45,6 +45,10 @@ public final class BrowserSurfaceInputAdapter {
         inputController.updateMousePosition(toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }
 
+    public void mouseMoved(Point browserPoint) {
+        inputController.updateMousePosition(copyBrowserPoint(browserPoint));
+    }
+
     public void mouseExited() {
         inputController.onMouseExited();
     }
@@ -53,12 +57,24 @@ public final class BrowserSurfaceInputAdapter {
         inputController.onMouseClicked(button, isDoubleClick, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }
 
+    public void mouseClicked(int button, boolean isDoubleClick, Point browserPoint) {
+        inputController.onMouseClicked(button, isDoubleClick, copyBrowserPoint(browserPoint));
+    }
+
     public boolean mouseReleased(int button, double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
         return inputController.onMouseReleased(button, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }
 
+    public boolean mouseReleased(int button, Point browserPoint) {
+        return inputController.onMouseReleased(button, copyBrowserPoint(browserPoint));
+    }
+
     public boolean mouseDragged(int button, double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
         return inputController.onMouseDragged(button, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
+    }
+
+    public boolean mouseDragged(int button, Point browserPoint) {
+        return inputController.onMouseDragged(button, copyBrowserPoint(browserPoint));
     }
 
     public void mouseScrolled(double surfaceX, double surfaceY, int amount, int rotation, int renderedWidth, int renderedHeight) {
@@ -136,5 +152,9 @@ public final class BrowserSurfaceInputAdapter {
 
     private Point toBrowserPoint(double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
         return surface.toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight);
+    }
+
+    private static Point copyBrowserPoint(Point browserPoint) {
+        return new Point(Objects.requireNonNull(browserPoint, "browserPoint"));
     }
 }

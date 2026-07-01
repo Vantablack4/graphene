@@ -42,20 +42,6 @@ HTTP server settings are merged from container configs:
 
 Native page slots are also cleared when `BrowserSurface` starts navigation or receives a CEF load-start event.
 
-## World Overlay Lifecycle
-
-`GrapheneWorldOverlayLayer` owns one transparent `BrowserSurface` plus a registered HUD element.
-
-Close layers directly or through the owner key:
-
-```java
-layer.close();
-GrapheneCore.closeOwnedSurfaces(owner);
-```
-
-`GrapheneCore.closeOwnedSurfaces(owner)` closes owned world overlays before closing browser surfaces for the same owner.
-This removes the HUD element and releases the underlying browser surface together.
-
 ## World Surface Lifecycle
 
 `GrapheneWorldSurface` owns one transparent `BrowserSurface` and registers itself with Fabric level rendering. Close it
@@ -66,8 +52,8 @@ surface.close();
 GrapheneCore.closeOwnedSurfaces(owner);
 ```
 
-`GrapheneCore.closeOwnedSurfaces(owner)` closes owned world overlays, owned world surfaces, and then any remaining
-browser surfaces for the same owner.
+`GrapheneCore.closeOwnedSurfaces(owner)` closes owned world surfaces and then any remaining browser surfaces for the
+same owner.
 
 ## Screen Auto-Close
 

@@ -4,8 +4,7 @@ World surfaces render a Graphene `BrowserSurface` as a depth-tested textured qua
 when the UI should physically sit on a crop, block, table, sign, kiosk, or entity attachment instead of floating in
 screen space.
 
-For projected HUD cards and dense labels, use [World Overlays](world-overlays.md). For physical in-world HTML panels,
-use this API.
+For physical in-world HTML panels, use this API.
 
 ## Java API
 
@@ -76,6 +75,15 @@ payload.addProperty("block", blockPos.toShortString());
 surface.bridge().emitJson("my-mod:surface-frame", payload);
 ```
 
+For tick/frame data across many world surfaces, prefer a per-surface `GrapheneBridgeCoalescer` so unchanged payloads are
+suppressed and only the latest pending state is sent after the configured interval:
+
+```java
+GrapheneBridgeCoalescer frames = GrapheneBridgeCoalescer.create(surface.bridge(), Duration.ofMillis(100));
+frames.queueJson("my-mod:surface-frame", payload);
+frames.flush();
+```
+
 And receive them in the page:
 
 ```js
@@ -115,6 +123,38 @@ Optional<GrapheneWorldSurfacePick> pick = GrapheneWorldSurfaces.pickNearestFromR
 The returned `surfaceX`/`surfaceY` values are logical Graphene surface coordinates, already adjusted for readable
 two-sided surfaces.
 
+## Performance Model
+
+World surfaces are designed for a bounded set of live browser quads, including billboard-heavy scenes. The render path
+uses cached surface snapshots, short-lived candidate caches, exact distance checks, camera-forward rejection, side
+rejection, and `Camera#getCullFrustum().isVisible(...)` before it prepares the browser texture frame. Fixed surfaces
+also reuse their derived rotation, normal, and AABB until their geometry changes.
+
+Use these defaults as the production baseline:
+
+- Keep `maxDistance` as small as the UI can tolerate. The default is
+  `GrapheneWorldSurfaceConfig.DEFAULT_MAX_DISTANCE` (`48.0D`).
+- Keep `interactionReach` separate from render distance. The default is
+  `GrapheneWorldSurfaceConfig.DEFAULT_INTERACTION_REACH` (`64.0D`), and automatic interaction is still capped by
+  `maxDistance`.
+- Prefer `maxFps(30)` or lower for mostly static panels. Use `15` or `20` for labels, crop markers, and NPC nameplates
+  that update through bridge state instead of animation.
+- Prefer `FIXED` or `CAMERA_YAW` for many surfaces. Full `CAMERA` billboards are supported, but their bounds change
+  with camera pitch/yaw and therefore cannot reuse as much geometry work.
+- Close surfaces through `close()` or `GrapheneCore.closeOwnedSurfaces(owner)` as soon as the object leaves the active
+  gameplay context.
+
+For frequently changing Java-to-page state, coalesce updates before they hit the browser:
+
+```java
+GrapheneBridgeCoalescer updates = GrapheneBridgeCoalescer.create(surface.bridge(), Duration.ofMillis(100));
+updates.queueJson("my-mod:crop-state", payload);
+updates.flush();
+```
+
+The coalescer keeps only the latest pending payload for each channel, waits for bridge readiness, suppresses duplicate
+sent payloads, and caps repeated per-tick updates to a fixed cadence.
+
 ## Current Limits
 
 - World surfaces render the browser texture only; native slots are still a screen-space overlay feature.
@@ -125,8 +165,14 @@ two-sided surfaces.
   drawing two coplanar translucent browser quads or exposing mirrored text.
 - `DOUBLE_SIDED_MIRRORED` is retained only as a deprecated binary/source compatibility alias for readable two-sided
   rendering. It no longer exposes mirrored text and should not be used in new code.
-- Use a small number of surfaces. For many crops or NPCs, aggregate into one world overlay layer or only create world
-  surfaces for selected/high-value objects.
+- Use a bounded number of surfaces. For many crops or NPCs, aggregate labels into fewer browser pages where possible, or
+  only create world surfaces for selected/high-value objects.
+- Graphene keeps a cached nearby candidate list, rejects surfaces by dimension, distance, behind-camera plane,
+  camera-facing side, and camera frustum before preparing the browser texture frame, and caches fixed-surface geometry
+  until the surface transform changes. Keep `maxDistance`, `worldSize`, and side mode tight so large scenes avoid
+  unnecessary browser work.
+- Browser texture frames are reused when the CEF frame version and visible source rect do not change. The expensive part
+  in dense scenes is usually browser/page work, so throttle bridge updates and keep page animations modest.
 
 ## Validation
 

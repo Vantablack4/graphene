@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
@@ -15,9 +16,9 @@ import tytoo.grapheneui.api.GrapheneHandle;
 import tytoo.grapheneui.api.world.GrapheneWorldSurface;
 import tytoo.grapheneui.api.world.GrapheneWorldSurfaceConfig;
 import tytoo.grapheneui.api.world.GrapheneWorldSurfacePick;
+import tytoo.grapheneui.internal.mc.McClient;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -30,12 +31,19 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public final class GrapheneWorldSurfaceManager {
     private static final int WORLD_SURFACE_BROWSER_BUTTON = GLFW.GLFW_MOUSE_BUTTON_LEFT;
+    private static final int RENDER_CANDIDATE_REFRESH_TICKS = 5;
+    private static final int INTERACTION_CANDIDATE_REFRESH_TICKS = 2;
+    private static final double CANDIDATE_REFRESH_DISTANCE_SQUARED = 1.0D;
     private static final AtomicInteger NEXT_SURFACE_SEQUENCE = new AtomicInteger();
     private static final AtomicBoolean RENDER_EVENT_REGISTERED = new AtomicBoolean(false);
     private static final AtomicBoolean INPUT_TICK_EVENT_REGISTERED = new AtomicBoolean(false);
     private static final Object SURFACE_LOCK = new Object();
     private static final Set<GrapheneWorldSurfaceImpl> SURFACES = new LinkedHashSet<>();
     private static final Map<Object, List<GrapheneWorldSurfaceImpl>> SURFACES_BY_OWNER = new IdentityHashMap<>();
+    private static volatile List<GrapheneWorldSurfaceImpl> surfaceSnapshot = List.of();
+    private static volatile CandidateCache renderCandidateCache = CandidateCache.empty();
+    private static volatile CandidateCache interactionCandidateCache = CandidateCache.empty();
+    private static final AtomicInteger SURFACE_STATE_VERSION = new AtomicInteger();
     private static GrapheneWorldSurfacePick hoveredPick;
     private static GrapheneWorldSurfacePick activePrimaryPick;
     private static boolean primaryUsePressed;
@@ -81,15 +89,17 @@ public final class GrapheneWorldSurfaceManager {
     ) {
         Objects.requireNonNull(rayOrigin, "rayOrigin");
         Objects.requireNonNull(rayDirection, "rayDirection");
-        List<GrapheneWorldSurfaceImpl> surfaces;
-        synchronized (SURFACE_LOCK) {
-            surfaces = List.copyOf(SURFACES);
+        GrapheneWorldSurfacePick nearestPick = null;
+        double nearestDistance = Double.POSITIVE_INFINITY;
+        for (GrapheneWorldSurfaceImpl surface : surfaceSnapshot) {
+            Optional<GrapheneWorldSurfacePick> pick = surface.pick(dimension, rayOrigin, rayDirection, rayLength);
+            if (pick.isPresent() && pick.get().distance() < nearestDistance) {
+                nearestPick = pick.get();
+                nearestDistance = nearestPick.distance();
+            }
         }
 
-        return surfaces.stream()
-                .map(surface -> surface.pick(dimension, rayOrigin, rayDirection, rayLength))
-                .flatMap(Optional::stream)
-                .min(Comparator.comparingDouble(GrapheneWorldSurfacePick::distance));
+        return Optional.ofNullable(nearestPick);
     }
 
     public static boolean handlePrimaryUseFromCameraRay(Minecraft client) {
@@ -123,8 +133,14 @@ public final class GrapheneWorldSurfaceManager {
                 surfaces.remove(surface);
             }
             SURFACES_BY_OWNER.values().removeIf(List::isEmpty);
+            refreshSurfaceSnapshotLocked();
         }
         clearSurfaceInputState(surface);
+    }
+
+    static void surfaceStateChanged(GrapheneWorldSurfaceImpl surface) {
+        Objects.requireNonNull(surface, "surface");
+        invalidateCandidateCaches();
     }
 
     private static void ensureRenderEventRegistered() {
@@ -149,17 +165,50 @@ public final class GrapheneWorldSurfaceManager {
             if (owner != null) {
                 SURFACES_BY_OWNER.computeIfAbsent(owner, ignored -> new ArrayList<>()).add(surface);
             }
+            refreshSurfaceSnapshotLocked();
         }
     }
 
     private static void collectSubmits(LevelRenderContext context) {
-        List<GrapheneWorldSurfaceImpl> surfaces;
-        synchronized (SURFACE_LOCK) {
-            surfaces = List.copyOf(SURFACES);
+        Minecraft client = McClient.mc();
+        ClientLevel level = client.level;
+        Camera camera = context.gameRenderer().getMainCamera();
+        if (level == null || camera == null || !camera.isInitialized()) {
+            return;
         }
 
+        Vec3 cameraPosition = camera.position();
+        boolean screenOpen = McClient.currentScreen() != null;
+        List<GrapheneWorldSurfaceImpl> surfaces = renderCandidateSurfaces(
+                level.dimension(),
+                cameraPosition,
+                screenOpen,
+                level.getGameTime()
+        );
+        if (surfaces.isEmpty()) {
+            return;
+        }
+
+        List<GrapheneWorldSurfaceImpl.RenderCandidate> candidates = new ArrayList<>(surfaces.size());
         for (GrapheneWorldSurfaceImpl surface : surfaces) {
-            surface.collectSubmit(context);
+            GrapheneWorldSurfaceImpl.RenderCandidate candidate = surface.collectRenderCandidate(
+                    level.dimension(),
+                    camera,
+                    cameraPosition,
+                    screenOpen
+            );
+            if (candidate != null) {
+                candidates.add(candidate);
+            }
+        }
+
+        if (candidates.isEmpty()) {
+            return;
+        }
+
+        candidates.sort((left, right) -> Double.compare(right.distanceSquared(), left.distanceSquared()));
+        for (GrapheneWorldSurfaceImpl.RenderCandidate candidate : candidates) {
+            candidate.surface().submitRenderCandidate(context, candidate);
         }
     }
 
@@ -170,12 +219,13 @@ public final class GrapheneWorldSurfaceManager {
             return;
         }
 
-        Optional<GrapheneWorldSurfacePick> pick = pickNearestForInteractionFromCamera(client);
         if (primaryUsePressed) {
+            Optional<GrapheneWorldSurfacePick> pick = pickActiveForInteractionFromCamera(client);
             tickPrimaryUse(client, pick);
             return;
         }
 
+        Optional<GrapheneWorldSurfacePick> pick = pickNearestForInteractionFromCamera(client);
         updateHoveredPick(pick);
     }
 
@@ -190,21 +240,47 @@ public final class GrapheneWorldSurfaceManager {
         }
 
         Vector3fc forward = camera.forwardVector();
+        Vec3 cameraPosition = camera.position();
         Vec3 rayDirection = new Vec3(forward.x(), forward.y(), forward.z());
-        List<GrapheneWorldSurfaceImpl> surfaces;
-        synchronized (SURFACE_LOCK) {
-            surfaces = List.copyOf(SURFACES);
+        GrapheneWorldSurfacePick nearestPick = null;
+        double nearestDistance = Double.POSITIVE_INFINITY;
+        for (GrapheneWorldSurfaceImpl surface : interactionCandidateSurfaces(client, cameraPosition)) {
+            Optional<GrapheneWorldSurfacePick> pick = surface.pickForInteraction(
+                    client.level.dimension(),
+                    cameraPosition,
+                    rayDirection
+            );
+            if (pick.isPresent() && pick.get().distance() < nearestDistance) {
+                nearestPick = pick.get();
+                nearestDistance = nearestPick.distance();
+            }
         }
 
-        return surfaces.stream()
-                .map(surface -> surface.pick(
-                        client.level.dimension(),
-                        camera.position(),
-                        rayDirection,
-                        Math.min(surface.interactionReach(), surface.maxDistance())
-                ))
-                .flatMap(Optional::stream)
-                .min(Comparator.comparingDouble(GrapheneWorldSurfacePick::distance));
+        return Optional.ofNullable(nearestPick);
+    }
+
+    private static Optional<GrapheneWorldSurfacePick> pickActiveForInteractionFromCamera(Minecraft client) {
+        if (activePrimaryPick == null || !(activePrimaryPick.surface() instanceof GrapheneWorldSurfaceImpl surface)) {
+            return Optional.empty();
+        }
+
+        Camera camera = client.gameRenderer.getMainCamera();
+        if (camera == null || !camera.isInitialized()) {
+            return Optional.empty();
+        }
+
+        Vector3fc forward = camera.forwardVector();
+        Vec3 rayDirection = new Vec3(forward.x(), forward.y(), forward.z());
+        return surface.pickForInteraction(
+                client.level.dimension(),
+                camera.position(),
+                rayDirection
+        );
+    }
+
+    private static void refreshSurfaceSnapshotLocked() {
+        surfaceSnapshot = List.copyOf(SURFACES);
+        invalidateCandidateCaches();
     }
 
     private static void tickPrimaryUse(Minecraft client, Optional<GrapheneWorldSurfacePick> pick) {
@@ -216,8 +292,11 @@ public final class GrapheneWorldSurfaceManager {
         }
 
         pick.filter(GrapheneWorldSurfaceManager::isActivePrimarySurface).ifPresent(currentPick -> {
+            GrapheneWorldSurfacePick previousPick = activePrimaryPick;
             activePrimaryPick = currentPick;
-            dispatchPrimaryDrag(currentPick);
+            if (!sameBrowserPoint(previousPick, currentPick)) {
+                dispatchPrimaryDrag(currentPick);
+            }
         });
     }
 
@@ -238,10 +317,7 @@ public final class GrapheneWorldSurfaceManager {
         pick.surface().inputAdapter().mouseClicked(
                 WORLD_SURFACE_BROWSER_BUTTON,
                 false,
-                pick.surfaceX(),
-                pick.surfaceY(),
-                pick.renderedWidth(),
-                pick.renderedHeight()
+                pick.browserPoint()
         );
     }
 
@@ -255,20 +331,14 @@ public final class GrapheneWorldSurfaceManager {
 
         pick.surface().inputAdapter().mouseReleased(
                 WORLD_SURFACE_BROWSER_BUTTON,
-                pick.surfaceX(),
-                pick.surfaceY(),
-                pick.renderedWidth(),
-                pick.renderedHeight()
+                pick.browserPoint()
         );
     }
 
     private static void dispatchPrimaryDrag(GrapheneWorldSurfacePick pick) {
         pick.surface().inputAdapter().mouseDragged(
                 WORLD_SURFACE_BROWSER_BUTTON,
-                pick.surfaceX(),
-                pick.surfaceY(),
-                pick.renderedWidth(),
-                pick.renderedHeight()
+                pick.browserPoint()
         );
     }
 
@@ -281,6 +351,10 @@ public final class GrapheneWorldSurfaceManager {
         GrapheneWorldSurfacePick currentPick = pick.get();
         if (hoveredPick != null && hoveredPick.surface() != currentPick.surface()) {
             clearHoveredPick();
+        }
+        if (sameBrowserPoint(hoveredPick, currentPick)) {
+            hoveredPick = currentPick;
+            return;
         }
 
         hoveredPick = currentPick;
@@ -297,10 +371,7 @@ public final class GrapheneWorldSurfaceManager {
 
     private static void dispatchMouseMoved(GrapheneWorldSurfacePick pick) {
         pick.surface().inputAdapter().mouseMoved(
-                pick.surfaceX(),
-                pick.surfaceY(),
-                pick.renderedWidth(),
-                pick.renderedHeight()
+                pick.browserPoint()
         );
     }
 
@@ -311,6 +382,119 @@ public final class GrapheneWorldSurfaceManager {
         if (hoveredPick != null && hoveredPick.surface() == surface) {
             hoveredPick = null;
             surface.inputAdapter().mouseExited();
+        }
+    }
+
+    private static void invalidateCandidateCaches() {
+        SURFACE_STATE_VERSION.incrementAndGet();
+        renderCandidateCache = CandidateCache.empty();
+        interactionCandidateCache = CandidateCache.empty();
+    }
+
+    private static boolean sameBrowserPoint(GrapheneWorldSurfacePick previousPick, GrapheneWorldSurfacePick currentPick) {
+        return previousPick != null
+                && currentPick != null
+                && previousPick.surface() == currentPick.surface()
+                && previousPick.browserPoint().equals(currentPick.browserPoint());
+    }
+
+    private static List<GrapheneWorldSurfaceImpl> renderCandidateSurfaces(
+            ResourceKey<Level> dimension,
+            Vec3 cameraPosition,
+            boolean screenOpen,
+            long gameTime
+    ) {
+        CandidateCache cache = renderCandidateCache;
+        int version = SURFACE_STATE_VERSION.get();
+        if (cache.matches(version, dimension, screenOpen, cameraPosition, gameTime, RENDER_CANDIDATE_REFRESH_TICKS)) {
+            return cache.surfaces();
+        }
+
+        List<GrapheneWorldSurfaceImpl> candidates = collectPotentialRenderCandidates(dimension, cameraPosition, screenOpen);
+        renderCandidateCache = new CandidateCache(version, dimension, screenOpen, cameraPosition, gameTime, candidates);
+        return candidates;
+    }
+
+    private static List<GrapheneWorldSurfaceImpl> interactionCandidateSurfaces(Minecraft client, Vec3 cameraPosition) {
+        CandidateCache cache = interactionCandidateCache;
+        int version = SURFACE_STATE_VERSION.get();
+        ResourceKey<Level> dimension = client.level.dimension();
+        long gameTime = client.level.getGameTime();
+        if (cache.matches(version, dimension, false, cameraPosition, gameTime, INTERACTION_CANDIDATE_REFRESH_TICKS)) {
+            return cache.surfaces();
+        }
+
+        List<GrapheneWorldSurfaceImpl> candidates = collectPotentialInteractionCandidates(dimension, cameraPosition);
+        interactionCandidateCache = new CandidateCache(version, dimension, false, cameraPosition, gameTime, candidates);
+        return candidates;
+    }
+
+    private static List<GrapheneWorldSurfaceImpl> collectPotentialRenderCandidates(
+            ResourceKey<Level> dimension,
+            Vec3 cameraPosition,
+            boolean screenOpen
+    ) {
+        List<GrapheneWorldSurfaceImpl> snapshot = surfaceSnapshot;
+        if (snapshot.isEmpty()) {
+            return List.of();
+        }
+
+        List<GrapheneWorldSurfaceImpl> candidates = new ArrayList<>(snapshot.size());
+        for (GrapheneWorldSurfaceImpl surface : snapshot) {
+            if (surface.isPotentialRenderCandidate(dimension, cameraPosition, screenOpen)) {
+                candidates.add(surface);
+            }
+        }
+        return candidates.isEmpty() ? List.of() : List.copyOf(candidates);
+    }
+
+    private static List<GrapheneWorldSurfaceImpl> collectPotentialInteractionCandidates(
+            ResourceKey<Level> dimension,
+            Vec3 cameraPosition
+    ) {
+        List<GrapheneWorldSurfaceImpl> snapshot = surfaceSnapshot;
+        if (snapshot.isEmpty()) {
+            return List.of();
+        }
+
+        List<GrapheneWorldSurfaceImpl> candidates = new ArrayList<>(snapshot.size());
+        for (GrapheneWorldSurfaceImpl surface : snapshot) {
+            if (surface.isPotentialInteractionCandidate(dimension, cameraPosition, false)) {
+                candidates.add(surface);
+            }
+        }
+        return candidates.isEmpty() ? List.of() : List.copyOf(candidates);
+    }
+
+    private record CandidateCache(
+            int surfaceVersion,
+            ResourceKey<Level> dimension,
+            boolean screenOpen,
+            Vec3 cameraPosition,
+            long gameTime,
+            List<GrapheneWorldSurfaceImpl> surfaces
+    ) {
+        static CandidateCache empty() {
+            return new CandidateCache(-1, null, false, Vec3.ZERO, Long.MIN_VALUE, List.of());
+        }
+
+        boolean matches(
+                int expectedSurfaceVersion,
+                ResourceKey<Level> expectedDimension,
+                boolean expectedScreenOpen,
+                Vec3 expectedCameraPosition,
+                long expectedGameTime,
+                int refreshTicks
+        ) {
+            if (surfaceVersion != expectedSurfaceVersion
+                    || !Objects.equals(dimension, expectedDimension)
+                    || screenOpen != expectedScreenOpen) {
+                return false;
+            }
+            if (expectedGameTime < gameTime || expectedGameTime - gameTime >= refreshTicks) {
+                return false;
+            }
+            return cameraPosition.distanceToSqr(expectedCameraPosition) < CANDIDATE_REFRESH_DISTANCE_SQUARED;
         }
     }
 }

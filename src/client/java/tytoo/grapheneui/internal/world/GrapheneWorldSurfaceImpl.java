@@ -4,18 +4,20 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Camera;
-import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.culling.Frustum;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix3f;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 import org.joml.Vector3f;
+import org.joml.Vector3fc;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
 import tytoo.grapheneui.api.nativeui.GrapheneNativeSlots;
 import tytoo.grapheneui.api.surface.BrowserSurface;
@@ -38,6 +40,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     private static final int FULL_BRIGHT_LIGHT = 0xF000F0;
     private static final int WHITE = 0xFFFFFFFF;
     private static final float BILLBOARD_UP_EPSILON = 1.0E-4F;
+    private static final double SURFACE_BOUNDS_INFLATE = 0.0625D;
 
     private final Object stateLock = new Object();
     private final Identifier surfaceId;
@@ -54,6 +57,8 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     private double maxDistance;
     private double interactionReach;
     private boolean renderWhenScreenOpen;
+    private long stateVersion;
+    private SurfaceGeometry fixedGeometryCache;
 
     GrapheneWorldSurfaceImpl(Identifier surfaceId, GrapheneWorldSurfaceConfig config) {
         this.surfaceId = Objects.requireNonNull(surfaceId, "surfaceId");
@@ -113,7 +118,12 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     @Override
     public void setDimension(ResourceKey<Level> dimension) {
         synchronized (stateLock) {
+            if (Objects.equals(this.dimension, dimension)) {
+                return;
+            }
+
             this.dimension = dimension;
+            bumpCandidateState();
         }
     }
 
@@ -126,8 +136,14 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
 
     @Override
     public void setPosition(Vec3 position) {
+        Vec3 nextPosition = Objects.requireNonNull(position, "position");
         synchronized (stateLock) {
-            this.position = Objects.requireNonNull(position, "position");
+            if (sameVec3(this.position, nextPosition)) {
+                return;
+            }
+
+            this.position = nextPosition;
+            bumpGeometryState();
         }
     }
 
@@ -147,9 +163,16 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
 
     @Override
     public void setWorldSize(float width, float height) {
+        float nextWorldWidth = requirePositive(width, "width");
+        float nextWorldHeight = requirePositive(height, "height");
         synchronized (stateLock) {
-            this.worldWidth = requirePositive(width, "width");
-            this.worldHeight = requirePositive(height, "height");
+            if (this.worldWidth == nextWorldWidth && this.worldHeight == nextWorldHeight) {
+                return;
+            }
+
+            this.worldWidth = nextWorldWidth;
+            this.worldHeight = nextWorldHeight;
+            bumpGeometryState();
         }
     }
 
@@ -169,8 +192,14 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
 
     @Override
     public void setRotation(Quaternionfc rotation) {
+        Quaternionf nextRotation = new Quaternionf(Objects.requireNonNull(rotation, "rotation"));
         synchronized (stateLock) {
-            this.rotation = new Quaternionf(Objects.requireNonNull(rotation, "rotation"));
+            if (this.rotation.equals(nextRotation)) {
+                return;
+            }
+
+            this.rotation = nextRotation;
+            bumpGeometryState();
         }
     }
 
@@ -197,8 +226,14 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
 
     @Override
     public void setFacing(GrapheneWorldSurfaceFacing facing) {
+        GrapheneWorldSurfaceFacing nextFacing = Objects.requireNonNull(facing, "facing");
         synchronized (stateLock) {
-            this.facing = Objects.requireNonNull(facing, "facing");
+            if (this.facing == nextFacing) {
+                return;
+            }
+
+            this.facing = nextFacing;
+            bumpGeometryState();
         }
     }
 
@@ -211,8 +246,14 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
 
     @Override
     public void setSide(GrapheneWorldSurfaceSide side) {
+        GrapheneWorldSurfaceSide nextSide = Objects.requireNonNull(side, "side");
         synchronized (stateLock) {
-            this.side = Objects.requireNonNull(side, "side");
+            if (this.side == nextSide) {
+                return;
+            }
+
+            this.side = nextSide;
+            bumpCandidateState();
         }
     }
 
@@ -225,8 +266,14 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
 
     @Override
     public void setMaxDistance(double maxDistance) {
+        double nextMaxDistance = requirePositive(maxDistance, "maxDistance");
         synchronized (stateLock) {
-            this.maxDistance = requirePositive(maxDistance, "maxDistance");
+            if (this.maxDistance == nextMaxDistance) {
+                return;
+            }
+
+            this.maxDistance = nextMaxDistance;
+            bumpCandidateState();
         }
     }
 
@@ -239,8 +286,14 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
 
     @Override
     public void setInteractionReach(double interactionReach) {
+        double nextInteractionReach = requirePositive(interactionReach, "interactionReach");
         synchronized (stateLock) {
-            this.interactionReach = requirePositive(interactionReach, "interactionReach");
+            if (this.interactionReach == nextInteractionReach) {
+                return;
+            }
+
+            this.interactionReach = nextInteractionReach;
+            bumpCandidateState();
         }
     }
 
@@ -254,7 +307,12 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
     @Override
     public void setRenderWhenScreenOpen(boolean renderWhenScreenOpen) {
         synchronized (stateLock) {
+            if (this.renderWhenScreenOpen == renderWhenScreenOpen) {
+                return;
+            }
+
             this.renderWhenScreenOpen = renderWhenScreenOpen;
+            bumpCandidateState();
         }
     }
 
@@ -282,29 +340,56 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         surface.close();
     }
 
-    void collectSubmit(LevelRenderContext context) {
+    boolean isPotentialRenderCandidate(ResourceKey<Level> dimension, Vec3 cameraPosition, boolean screenOpen) {
         if (closed.get()) {
-            return;
+            return false;
+        }
+
+        return isPotentialRenderCandidate(snapshotRenderState(), dimension, cameraPosition, screenOpen);
+    }
+
+    boolean isPotentialInteractionCandidate(ResourceKey<Level> dimension, Vec3 cameraPosition, boolean screenOpen) {
+        if (closed.get()) {
+            return false;
         }
 
         RenderState renderState = snapshotRenderState();
-        if (!renderState.renderWhenScreenOpen && McClient.currentScreen() != null) {
-            return;
+        double effectiveReach = Math.min(renderState.interactionReach, renderState.maxDistance);
+        return isPotentialCandidate(renderState, dimension, cameraPosition, screenOpen, effectiveReach);
+    }
+
+    RenderCandidate collectRenderCandidate(
+            ResourceKey<Level> dimension,
+            Camera camera,
+            Vec3 cameraPosition,
+            boolean screenOpen
+    ) {
+        if (closed.get()) {
+            return null;
         }
 
-        ClientLevel level = McClient.mc().level;
-        Camera camera = context.gameRenderer().getMainCamera();
-        if (level == null || camera == null || !camera.isInitialized()) {
-            return;
+        RenderState renderState = snapshotRenderState();
+        if (!isPotentialRenderCandidate(renderState, dimension, cameraPosition, screenOpen)
+                || isBehindCamera(renderState, cameraPosition, camera.forwardVector())) {
+            return null;
         }
 
-        if (renderState.dimension != null && !renderState.dimension.equals(level.dimension())) {
-            return;
-        }
-
-        Vec3 cameraPosition = camera.position();
         double distanceSquared = cameraPosition.distanceToSqr(renderState.position);
         if (distanceSquared > renderState.maxDistance * renderState.maxDistance) {
+            return null;
+        }
+
+        SurfaceGeometry geometry = resolveGeometry(renderState, cameraPosition);
+        QuadSide quadSide = resolveQuadSide(renderState, cameraPosition, geometry);
+        if (quadSide == null || !isVisibleToCameraFrustum(camera, geometry)) {
+            return null;
+        }
+
+        return new RenderCandidate(this, renderState, cameraPosition, distanceSquared, geometry, quadSide);
+    }
+
+    void submitRenderCandidate(LevelRenderContext context, RenderCandidate candidate) {
+        if (closed.get()) {
             return;
         }
 
@@ -313,22 +398,16 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
             return;
         }
 
-        Quaternionf effectiveRotation = resolveRotation(renderState, cameraPosition);
-        QuadSide quadSide = resolveQuadSide(renderState, cameraPosition, effectiveRotation);
-        if (quadSide == null) {
-            return;
-        }
-
         RenderType renderType = RenderTypes.entityTranslucent(textureFrame.textureId(), false);
         PoseStack poseStack = context.poseStack();
         poseStack.pushPose();
         try {
             poseStack.translate(
-                    renderState.position.x - cameraPosition.x,
-                    renderState.position.y - cameraPosition.y,
-                    renderState.position.z - cameraPosition.z
+                    candidate.renderState.position.x - candidate.cameraPosition.x,
+                    candidate.renderState.position.y - candidate.cameraPosition.y,
+                    candidate.renderState.position.z - candidate.cameraPosition.z
             );
-            poseStack.mulPose(effectiveRotation);
+            poseStack.mulPose(new Quaternionf(candidate.geometry.rotation));
             context.submitNodeCollector().submitCustomGeometry(
                     poseStack,
                     renderType,
@@ -336,9 +415,9 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
                             pose,
                             buffer,
                             textureFrame,
-                            renderState.worldWidth,
-                            renderState.worldHeight,
-                            quadSide
+                            candidate.renderState.worldWidth,
+                            candidate.renderState.worldHeight,
+                            candidate.quadSide
                     )
             );
         } finally {
@@ -359,6 +438,29 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         return pick(snapshotRenderState(), dimension, rayOrigin, rayDirection, rayLength);
     }
 
+    Optional<GrapheneWorldSurfacePick> pickForInteraction(
+            ResourceKey<Level> dimension,
+            Vec3 rayOrigin,
+            Vec3 rayDirection
+    ) {
+        if (closed.get()) {
+            return Optional.empty();
+        }
+
+        RenderState renderState = snapshotRenderState();
+        return pick(renderState, dimension, rayOrigin, rayDirection, Math.min(renderState.interactionReach, renderState.maxDistance));
+    }
+
+    private void bumpGeometryState() {
+        stateVersion++;
+        fixedGeometryCache = null;
+        GrapheneWorldSurfaceManager.surfaceStateChanged(this);
+    }
+
+    private void bumpCandidateState() {
+        GrapheneWorldSurfaceManager.surfaceStateChanged(this);
+    }
+
     private RenderState snapshotRenderState() {
         synchronized (stateLock) {
             return new RenderState(
@@ -371,9 +473,38 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
                     side,
                     maxDistance,
                     interactionReach,
-                    renderWhenScreenOpen
+                    renderWhenScreenOpen,
+                    calculateSurfaceRadius(worldWidth, worldHeight),
+                    stateVersion
             );
         }
+    }
+
+    private static boolean isPotentialRenderCandidate(
+            RenderState renderState,
+            ResourceKey<Level> dimension,
+            Vec3 cameraPosition,
+            boolean screenOpen
+    ) {
+        return isPotentialCandidate(renderState, dimension, cameraPosition, screenOpen, renderState.maxDistance);
+    }
+
+    private static boolean isPotentialCandidate(
+            RenderState renderState,
+            ResourceKey<Level> dimension,
+            Vec3 cameraPosition,
+            boolean screenOpen,
+            double maxDistance
+    ) {
+        if (!renderState.renderWhenScreenOpen && screenOpen) {
+            return false;
+        }
+        if (renderState.dimension != null && !renderState.dimension.equals(dimension)) {
+            return false;
+        }
+
+        double effectiveDistance = maxDistance + renderState.surfaceRadius;
+        return cameraPosition.distanceToSqr(renderState.position) <= effectiveDistance * effectiveDistance;
     }
 
     private Optional<GrapheneWorldSurfacePick> pick(
@@ -404,13 +535,13 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         }
 
         Vec3 normalizedDirection = rayDirection.normalize();
-        Quaternionf effectiveRotation = resolveRotation(renderState, rayOrigin);
-        QuadSide quadSide = resolveQuadSide(renderState, rayOrigin, effectiveRotation);
+        SurfaceGeometry geometry = resolveGeometry(renderState, rayOrigin);
+        QuadSide quadSide = resolveQuadSide(renderState, rayOrigin, geometry);
         if (quadSide == null) {
             return Optional.empty();
         }
 
-        Vector3f normal = effectiveRotation.transformPositiveZ(new Vector3f()).normalize();
+        Vector3f normal = geometry.normal;
         double denominator = normalizedDirection.x * normal.x
                 + normalizedDirection.y * normal.y
                 + normalizedDirection.z * normal.z;
@@ -431,7 +562,7 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
                 (float) (hitPosition.y - renderState.position.y),
                 (float) (hitPosition.z - renderState.position.z)
         );
-        new Quaternionf(effectiveRotation).invert().transform(local);
+        geometry.inverseRotation.transform(local);
 
         float halfWidth = renderState.worldWidth * 0.5F;
         float halfHeight = renderState.worldHeight * 0.5F;
@@ -474,6 +605,32 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         return new Quaternionf(renderState.rotation);
     }
 
+    private SurfaceGeometry resolveGeometry(RenderState renderState, Vec3 cameraPosition) {
+        if (renderState.facing != GrapheneWorldSurfaceFacing.FIXED) {
+            return createGeometry(renderState, resolveRotation(renderState, cameraPosition));
+        }
+
+        synchronized (stateLock) {
+            if (fixedGeometryCache != null && fixedGeometryCache.stateVersion == renderState.stateVersion) {
+                return fixedGeometryCache;
+            }
+
+            SurfaceGeometry geometry = createGeometry(renderState, renderState.rotation);
+            fixedGeometryCache = geometry;
+            return geometry;
+        }
+    }
+
+    private static SurfaceGeometry createGeometry(RenderState renderState, Quaternionfc rotation) {
+        Quaternionf geometryRotation = new Quaternionf(rotation);
+        Quaternionf inverseRotation = new Quaternionf(geometryRotation).invert();
+        Vector3f localX = geometryRotation.transformPositiveX(new Vector3f());
+        Vector3f localY = geometryRotation.transformPositiveY(new Vector3f());
+        Vector3f normal = geometryRotation.transformPositiveZ(new Vector3f()).normalize();
+        AABB bounds = surfaceBounds(renderState, localX, localY);
+        return new SurfaceGeometry(renderState.stateVersion, geometryRotation, inverseRotation, normal, bounds);
+    }
+
     private static Quaternionf faceCameraRotation(Vec3 position, Vec3 cameraPosition) {
         Vec3 toCamera = cameraPosition.subtract(position);
         if (!toCamera.isFinite() || toCamera.lengthSqr() < 1.0E-6D) {
@@ -512,8 +669,8 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         return new Quaternionf().rotationY((float) Math.atan2(deltaX, deltaZ));
     }
 
-    private static QuadSide resolveQuadSide(RenderState renderState, Vec3 cameraPosition, Quaternionf effectiveRotation) {
-        boolean cameraInFront = cameraInFrontOfSurface(renderState.position, cameraPosition, effectiveRotation);
+    private static QuadSide resolveQuadSide(RenderState renderState, Vec3 cameraPosition, SurfaceGeometry geometry) {
+        boolean cameraInFront = cameraInFrontOfSurface(renderState.position, cameraPosition, geometry.normal);
         return switch (renderState.side) {
             case FRONT_ONLY -> cameraInFront ? QuadSide.FRONT : null;
             case BACK_ONLY -> cameraInFront ? null : QuadSide.BACK;
@@ -521,12 +678,51 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         };
     }
 
-    private static boolean cameraInFrontOfSurface(Vec3 position, Vec3 cameraPosition, Quaternionf effectiveRotation) {
-        Vector3f normal = effectiveRotation.transformPositiveZ(new Vector3f());
+    private static boolean cameraInFrontOfSurface(Vec3 position, Vec3 cameraPosition, Vector3f normal) {
         double deltaX = cameraPosition.x - position.x;
         double deltaY = cameraPosition.y - position.y;
         double deltaZ = cameraPosition.z - position.z;
         return deltaX * normal.x + deltaY * normal.y + deltaZ * normal.z >= 0.0D;
+    }
+
+    private static boolean isBehindCamera(RenderState renderState, Vec3 cameraPosition, Vector3fc cameraForward) {
+        if (cameraForward == null) {
+            return false;
+        }
+
+        double deltaX = renderState.position.x - cameraPosition.x;
+        double deltaY = renderState.position.y - cameraPosition.y;
+        double deltaZ = renderState.position.z - cameraPosition.z;
+        double forwardDistance = deltaX * cameraForward.x() + deltaY * cameraForward.y() + deltaZ * cameraForward.z();
+        return forwardDistance < -renderState.surfaceRadius;
+    }
+
+    private static boolean isVisibleToCameraFrustum(Camera camera, SurfaceGeometry geometry) {
+        Frustum frustum = camera.getCullFrustum();
+        return frustum == null || frustum.isVisible(geometry.bounds);
+    }
+
+    private static AABB surfaceBounds(RenderState renderState, Vector3f localX, Vector3f localY) {
+        float halfWidth = renderState.worldWidth * 0.5F;
+        float halfHeight = renderState.worldHeight * 0.5F;
+        double extentX = Math.abs(localX.x) * halfWidth + Math.abs(localY.x) * halfHeight;
+        double extentY = Math.abs(localX.y) * halfWidth + Math.abs(localY.y) * halfHeight;
+        double extentZ = Math.abs(localX.z) * halfWidth + Math.abs(localY.z) * halfHeight;
+
+        return new AABB(
+                renderState.position.x - extentX,
+                renderState.position.y - extentY,
+                renderState.position.z - extentZ,
+                renderState.position.x + extentX,
+                renderState.position.y + extentY,
+                renderState.position.z + extentZ
+        ).inflate(SURFACE_BOUNDS_INFLATE);
+    }
+
+    private static double calculateSurfaceRadius(float worldWidth, float worldHeight) {
+        double halfWidth = worldWidth * 0.5D;
+        double halfHeight = worldHeight * 0.5D;
+        return Math.sqrt(halfWidth * halfWidth + halfHeight * halfHeight) + SURFACE_BOUNDS_INFLATE;
     }
 
     private void renderQuad(
@@ -578,6 +774,14 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
         return value;
     }
 
+    private static boolean sameVec3(Vec3 left, Vec3 right) {
+        return left != null
+                && right != null
+                && Double.doubleToLongBits(left.x) == Double.doubleToLongBits(right.x)
+                && Double.doubleToLongBits(left.y) == Double.doubleToLongBits(right.y)
+                && Double.doubleToLongBits(left.z) == Double.doubleToLongBits(right.z);
+    }
+
     private record RenderState(
             ResourceKey<Level> dimension,
             Vec3 position,
@@ -588,7 +792,28 @@ final class GrapheneWorldSurfaceImpl implements GrapheneWorldSurface {
             GrapheneWorldSurfaceSide side,
             double maxDistance,
             double interactionReach,
-            boolean renderWhenScreenOpen
+            boolean renderWhenScreenOpen,
+            double surfaceRadius,
+            long stateVersion
+    ) {
+    }
+
+    record SurfaceGeometry(
+            long stateVersion,
+            Quaternionf rotation,
+            Quaternionf inverseRotation,
+            Vector3f normal,
+            AABB bounds
+    ) {
+    }
+
+    record RenderCandidate(
+            GrapheneWorldSurfaceImpl surface,
+            RenderState renderState,
+            Vec3 cameraPosition,
+            double distanceSquared,
+            SurfaceGeometry geometry,
+            QuadSide quadSide
     ) {
     }
 

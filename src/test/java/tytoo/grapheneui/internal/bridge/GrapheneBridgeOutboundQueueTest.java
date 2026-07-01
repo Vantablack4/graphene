@@ -46,4 +46,24 @@ final class GrapheneBridgeOutboundQueueTest {
 
         assertTrue(dispatchedMessages.isEmpty());
     }
+
+    @Test
+    void latestQueuedMessagesReplaceOlderPayloadsBeforeReady() {
+        List<String> dispatchedMessages = new ArrayList<>();
+        GrapheneBridgeOutboundQueue queue = new GrapheneBridgeOutboundQueue(
+                dispatchedMessages::add,
+                16,
+                GrapheneBridgeQueueOverflowPolicy.DROP_OLDEST,
+                GrapheneBridgeDiagnostics.noOp()
+        );
+
+        queue.queueOrDispatch("first");
+        queue.queueLatestOrDispatch("surface-a", "old");
+        queue.queueLatestOrDispatch("surface-a", "new");
+        queue.queueLatestOrDispatch("surface-b", "other");
+
+        queue.markReadyAndFlush();
+
+        assertEquals(List.of("first", "new", "other"), dispatchedMessages);
+    }
 }

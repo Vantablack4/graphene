@@ -12,6 +12,14 @@ final class GrapheneBrowserGpuRenderer implements AutoCloseable {
     private final GrapheneBrowserGpuTexture mainTexture = new GrapheneBrowserGpuTexture("Graphene Browser Main");
     private final GrapheneBrowserGpuTexture popupTexture = new GrapheneBrowserGpuTexture("Graphene Browser Popup");
     private final GrapheneBrowserFrameUploader frameUploader;
+    private BrowserSurfaceTextureFrame cachedMainFrameTextureFrame;
+    private long cachedMainFrameVersion = Long.MIN_VALUE;
+    private int cachedMainFrameWidth;
+    private int cachedMainFrameHeight;
+    private int cachedMainFrameRegionX;
+    private int cachedMainFrameRegionY;
+    private int cachedMainFrameRegionWidth;
+    private int cachedMainFrameRegionHeight;
 
     GrapheneBrowserGpuRenderer(boolean transparent) {
         this.frameUploader = new GrapheneBrowserFrameUploader(transparent);
@@ -124,11 +132,24 @@ final class GrapheneBrowserGpuRenderer implements AutoCloseable {
             return null;
         }
 
+        BrowserSurfaceTextureFrame cachedFrame = cachedMainFrameTextureFrame;
+        if (cachedFrame != null
+                && cachedMainFrameVersion == mainFrame.frameVersion()
+                && cachedMainFrameWidth == mainFrame.width()
+                && cachedMainFrameHeight == mainFrame.height()
+                && cachedMainFrameRegionX == visibleRegion.x()
+                && cachedMainFrameRegionY == visibleRegion.y()
+                && cachedMainFrameRegionWidth == visibleRegion.width()
+                && cachedMainFrameRegionHeight == visibleRegion.height()
+                && mainTexture.isUploaded(mainFrame.frameVersion())) {
+            return cachedFrame;
+        }
+
         mainTexture.ensureSize(mainFrame.width(), mainFrame.height());
         frameUploader.uploadIfNeeded(mainTexture, mainFrame);
         mainTexture.ensureRegistered();
 
-        return new BrowserSurfaceTextureFrame(
+        BrowserSurfaceTextureFrame textureFrame = new BrowserSurfaceTextureFrame(
                 mainTexture.textureId(),
                 mainFrame.width(),
                 mainFrame.height(),
@@ -137,6 +158,15 @@ final class GrapheneBrowserGpuRenderer implements AutoCloseable {
                 (float) visibleRegion.y() / mainFrame.height(),
                 (float) (visibleRegion.y() + visibleRegion.height()) / mainFrame.height()
         );
+        cachedMainFrameTextureFrame = textureFrame;
+        cachedMainFrameVersion = mainFrame.frameVersion();
+        cachedMainFrameWidth = mainFrame.width();
+        cachedMainFrameHeight = mainFrame.height();
+        cachedMainFrameRegionX = visibleRegion.x();
+        cachedMainFrameRegionY = visibleRegion.y();
+        cachedMainFrameRegionWidth = visibleRegion.width();
+        cachedMainFrameRegionHeight = visibleRegion.height();
+        return textureFrame;
     }
 
     CompletableFuture<BufferedImage> createScreenshot(GraphenePaintBuffer.Snapshot snapshot) {
@@ -145,6 +175,10 @@ final class GrapheneBrowserGpuRenderer implements AutoCloseable {
 
     @Override
     public void close() {
+        cachedMainFrameTextureFrame = null;
+        cachedMainFrameVersion = Long.MIN_VALUE;
+        cachedMainFrameWidth = 0;
+        cachedMainFrameHeight = 0;
         mainTexture.close();
         popupTexture.close();
         frameUploader.close();

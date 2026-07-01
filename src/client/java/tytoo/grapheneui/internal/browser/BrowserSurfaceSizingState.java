@@ -97,19 +97,37 @@ public final class BrowserSurfaceSizingState {
             return ResizeInstruction.noResize();
         }
 
-        updateResolutionFromSurface(scaleX, scaleY);
+        int nextResolutionWidth = calculateAutoResolutionWidth(scaleX);
+        int nextResolutionHeight = calculateAutoResolutionHeight(scaleY);
+        if (nextResolutionWidth == resolutionWidth && nextResolutionHeight == resolutionHeight) {
+            return ResizeInstruction.noResize();
+        }
+
+        setResolutionInternal(nextResolutionWidth, nextResolutionHeight);
         return ResizeInstruction.resizeTo(resolutionWidth, resolutionHeight);
     }
 
     public ResizeInstruction setResolution(int width, int height) {
+        int nextResolutionWidth = requirePositive(width, "resolutionWidth");
+        int nextResolutionHeight = requirePositive(height, "resolutionHeight");
         autoResolution = false;
-        setResolutionInternal(width, height);
+        if (nextResolutionWidth == resolutionWidth && nextResolutionHeight == resolutionHeight) {
+            return ResizeInstruction.noResize();
+        }
+
+        setResolutionInternal(nextResolutionWidth, nextResolutionHeight);
         return ResizeInstruction.resizeTo(resolutionWidth, resolutionHeight);
     }
 
     public ResizeInstruction useAutoResolution(double scaleX, double scaleY) {
         autoResolution = true;
-        updateResolutionFromSurface(scaleX, scaleY);
+        int nextResolutionWidth = calculateAutoResolutionWidth(scaleX);
+        int nextResolutionHeight = calculateAutoResolutionHeight(scaleY);
+        if (nextResolutionWidth == resolutionWidth && nextResolutionHeight == resolutionHeight) {
+            return ResizeInstruction.noResize();
+        }
+
+        setResolutionInternal(nextResolutionWidth, nextResolutionHeight);
         return ResizeInstruction.resizeTo(resolutionWidth, resolutionHeight);
     }
 
@@ -149,9 +167,15 @@ public final class BrowserSurfaceSizingState {
     }
 
     private void updateResolutionFromSurface(double scaleX, double scaleY) {
-        int calculatedWidth = (int) Math.max(MIN_SIZE, Math.round(surfaceWidth * scaleX));
-        int calculatedHeight = (int) Math.max(MIN_SIZE, Math.round(surfaceHeight * scaleY));
-        setResolutionInternal(calculatedWidth, calculatedHeight);
+        setResolutionInternal(calculateAutoResolutionWidth(scaleX), calculateAutoResolutionHeight(scaleY));
+    }
+
+    private int calculateAutoResolutionWidth(double scaleX) {
+        return (int) Math.max(MIN_SIZE, Math.round(surfaceWidth * scaleX));
+    }
+
+    private int calculateAutoResolutionHeight(double scaleY) {
+        return (int) Math.max(MIN_SIZE, Math.round(surfaceHeight * scaleY));
     }
 
     private void syncViewBoxToResolution() {

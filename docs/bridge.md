@@ -49,9 +49,28 @@ responseFuture.thenAccept(responseJson -> {
 Typed JSON helpers are available:
 
 - `emitJson(channel, payloadObject)`
+- `emitLatestJson(channel, coalescingKey, payloadObject)`
 - `requestJson(channel, payloadObject, responseType)`
 - `onEventJson(channel, payloadType, listener)`
 - `onRequestJson(channel, requestType, handler)`
+
+Use `emitLatest(...)` or `emitLatestJson(...)` for state snapshots where only the newest queued value matters. This
+coalesces Java outbound events by channel and key while the page is not ready, then flushes the latest values after the
+JS bridge handshake. Requests are never coalesced.
+
+```java
+bridge.emitLatestJson("crop:state", blockPos.toShortString(), cropState);
+```
+
+For high-frequency state, such as world-surface labels updated every tick, wrap the bridge in a
+`GrapheneBridgeCoalescer`. It keeps only the latest pending payload per channel, suppresses duplicate sent payloads, and
+enforces a minimum send interval:
+
+```java
+GrapheneBridgeCoalescer coalescer = bridge.coalescer(Duration.ofMillis(100));
+coalescer.queueJson("surface:frame", framePayload);
+coalescer.flush();
+```
 
 ## JavaScript API
 

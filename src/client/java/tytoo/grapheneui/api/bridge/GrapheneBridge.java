@@ -52,8 +52,25 @@ public interface GrapheneBridge {
 
     void emit(String channel, String payloadJson);
 
+    default void emitLatest(String channel, String coalescingKey, String payloadJson) {
+        Objects.requireNonNull(coalescingKey, "coalescingKey");
+        emit(channel, payloadJson);
+    }
+
     default void emitJson(String channel, Object payload) {
         emit(channel, GrapheneBridgeJson.toJson(payload));
+    }
+
+    default void emitJsonLatest(String channel, String coalescingKey, Object payload) {
+        emitLatest(channel, coalescingKey, GrapheneBridgeJson.toJson(payload));
+    }
+
+    default void emitLatestJson(String channel, String coalescingKey, Object payload) {
+        emitJsonLatest(channel, coalescingKey, payload);
+    }
+
+    default GrapheneBridgeCoalescer coalescer(Duration minInterval) {
+        return GrapheneBridgeCoalescer.create(this, minInterval);
     }
 
     default CompletableFuture<String> request(String channel, String payloadJson) {

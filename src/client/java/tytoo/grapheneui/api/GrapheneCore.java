@@ -10,7 +10,6 @@ import org.slf4j.LoggerFactory;
 import tytoo.grapheneui.api.config.*;
 import tytoo.grapheneui.api.runtime.GrapheneRuntime;
 import tytoo.grapheneui.internal.core.GrapheneCoreServices;
-import tytoo.grapheneui.internal.world.GrapheneWorldOverlayManager;
 import tytoo.grapheneui.internal.world.GrapheneWorldSurfaceManager;
 
 import java.nio.file.Path;
@@ -99,7 +98,6 @@ public final class GrapheneCore implements ClientModInitializer {
 
     public static void closeOwnedSurfaces(Object owner) {
         Object validatedOwner = Objects.requireNonNull(owner, "owner");
-        GrapheneWorldOverlayManager.closeOwned(validatedOwner);
         GrapheneWorldSurfaceManager.closeOwned(validatedOwner);
         SERVICES.surfaceManager().closeOwner(validatedOwner);
     }
