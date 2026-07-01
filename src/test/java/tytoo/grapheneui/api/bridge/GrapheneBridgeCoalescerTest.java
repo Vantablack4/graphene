@@ -52,7 +52,7 @@ final class GrapheneBridgeCoalescerTest {
         GrapheneBridgeCoalescer coalescer = new GrapheneBridgeCoalescer(bridge, Duration.ZERO, now::get);
 
         coalescer.queue("surface:frame", "{\"value\":1}");
-        assertFalse(coalescer.flush());
+        assertEquals(0, coalescer.flush());
 
         bridge.ready = true;
         assertEquals(1, coalescer.flush());
