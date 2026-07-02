@@ -17,8 +17,11 @@ import tytoo.grapheneui.internal.mc.McClient;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 final class GrapheneVanillaEntitySlotRenderer implements GrapheneNativeSlotRenderer {
+    private static final Identifier PLAYER_IDENTIFIER = Identifier.fromNamespaceAndPath("minecraft", "player");
+
     private final Map<Identifier, Entity> entitiesByIdentifier = new HashMap<>();
     private ClientLevel cachedLevel;
 
@@ -43,10 +46,12 @@ final class GrapheneVanillaEntitySlotRenderer implements GrapheneNativeSlotRende
                 "size"
         );
         float offsetY = GrapheneNativeSlotJson.floatValue(renderOptions, 0.0F, "offsetY");
-        boolean followMouse = GrapheneNativeSlotJson.booleanValue(renderOptions, true, "followMouse");
+        boolean followAlways = "always".equalsIgnoreCase(GrapheneNativeSlotJson.stringValue(renderOptions, null, "followMouse"));
+        boolean followMouse = followAlways || GrapheneNativeSlotJson.booleanValue(renderOptions, true, "followMouse");
+        boolean pointerActive = followAlways ? context.pointerAvailable() : context.hasPointerInside();
 
         context.withScissor(() -> {
-            if (followMouse && context.hasPointerInside() && entity instanceof LivingEntity livingEntity) {
+            if (followMouse && pointerActive && entity instanceof LivingEntity livingEntity) {
                 InventoryScreen.extractEntityInInventoryFollowsMouse(
                         context.graphics(),
                         bounds.x(),
@@ -75,11 +80,6 @@ final class GrapheneVanillaEntitySlotRenderer implements GrapheneNativeSlotRende
     }
 
     private Entity entity(JsonObject payload) {
-        Identifier identifier = GrapheneNativeSlotJson.identifierValue(payload, "entity", "type", "id");
-        if (identifier == null) {
-            return null;
-        }
-
         ClientLevel level = McClient.mc().level;
         if (level == null) {
             cachedLevel = null;
@@ -92,11 +92,39 @@ final class GrapheneVanillaEntitySlotRenderer implements GrapheneNativeSlotRende
             entitiesByIdentifier.clear();
         }
 
+        Entity player = player(payload, level);
+        if (player != null) {
+            return player;
+        }
+
+        Identifier identifier = GrapheneNativeSlotJson.identifierValue(payload, "entity", "type", "id");
+        if (identifier == null) {
+            return null;
+        }
+
+        if (PLAYER_IDENTIFIER.equals(identifier)) {
+            return McClient.mc().player;
+        }
+
         EntityType<?> entityType = BuiltInRegistries.ENTITY_TYPE.getOptional(identifier).orElse(null);
         if (entityType == null) {
             return null;
         }
 
         return entitiesByIdentifier.computeIfAbsent(identifier, ignored -> entityType.create(level, EntitySpawnReason.COMMAND));
+    }
+
+    private Entity player(JsonObject payload, ClientLevel level) {
+        UUID playerUuid = GrapheneNativeSlotJson.uuidValue(payload, "playerUuid", "player");
+        if (playerUuid != null) {
+            return level.getPlayerByUUID(playerUuid);
+        }
+
+        String player = GrapheneNativeSlotJson.stringValue(payload, null, "player");
+        if ("self".equalsIgnoreCase(player) || "local".equalsIgnoreCase(player)) {
+            return McClient.mc().player;
+        }
+
+        return null;
     }
 }

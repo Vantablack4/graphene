@@ -53,7 +53,7 @@ Graphene watches resize, scroll, intersection, and viewport changes and batches 
 - `block`, `minecraft:block`, `vanilla:block`: payload `{block: "minecraft:grass_block"}`
 - `head`, `player-head`, `minecraft:head`: payload `{uuid: "..."}` or `{texture: "minecraft:textures/entity/player/wide/steve.png"}`
 - `skin`, `player-skin`, `minecraft:skin`: payload `{uuid: "..."}` or `{texture: "...", model: "slim"}`
-- `entity`, `minecraft:entity`, `vanilla:entity`: payload `{entity: "minecraft:zombie"}`
+- `entity`, `minecraft:entity`, `vanilla:entity`: payload `{entity: "minecraft:zombie"}`, `{player: "self"}` for the local player, or `{playerUuid: "..."}` for a player in the loaded level
 
 Common render options:
 
@@ -62,6 +62,7 @@ Common render options:
 - `scale` or `size`: renderer-specific size override
 - `rotationX`, `rotationY`, `pivotY`: skin/entity orientation options
 - `decorations`, `fake`, `seed`, `countText`: item/block options
+- `followMouse`: entity option — `true` (default) makes living entities track the pointer while it is inside the slot, `"always"` tracks the pointer anywhere on the surface, `false` uses the static rotation options
 
 Common handoff options:
 

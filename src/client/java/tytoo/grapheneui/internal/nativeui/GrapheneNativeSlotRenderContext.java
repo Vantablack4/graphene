@@ -52,6 +52,10 @@ final class GrapheneNativeSlotRenderContext {
         return pointer.available() && bounds.contains(pointer.x(), pointer.y());
     }
 
+    boolean pointerAvailable() {
+        return pointer.available();
+    }
+
     int pointerX() {
         return pointer.x();
     }
