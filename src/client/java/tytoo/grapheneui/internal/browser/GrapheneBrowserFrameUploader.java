@@ -44,7 +44,12 @@ final class GrapheneBrowserFrameUploader {
             return;
         }
 
-        if (frame.fullReRender() || shouldUploadFullFrame(frame.dirtyRects(), frame.width(), frame.height())) {
+        // Dirty rects describe the delta from the previous paint frame only. If the texture
+        // does not hold exactly frameVersion - 1 (paints were skipped, or the texture was
+        // just (re)created with undefined contents), a partial upload would leave stale
+        // pixels behind, so the full frame must be uploaded instead.
+        boolean contiguous = texture.isUploaded(frame.frameVersion() - 1L);
+        if (!contiguous || frame.fullReRender() || shouldUploadFullFrame(frame.dirtyRects(), frame.width(), frame.height())) {
             uploadFullFrame(texture.texture(), frame.buffer(), frame.width(), frame.height());
         } else {
             uploadDirtyRects(texture.texture(), frame.buffer(), frame.dirtyRects(), frame.width(), frame.height());
