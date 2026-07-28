@@ -252,11 +252,7 @@ public final class GrapheneCefInstaller {
 
     static List<String> platformCompatibilityArgs(boolean mac, boolean linux, boolean waylandSession) {
         if (mac) {
-            return List.of(
-                    "--disable-gpu",
-                    "--disable-gpu-compositing",
-                    "--in-process-gpu"
-            );
+            return List.of("--in-process-gpu");
         }
 
         if (!linux) {

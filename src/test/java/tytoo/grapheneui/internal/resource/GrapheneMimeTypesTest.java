@@ -13,6 +13,20 @@ final class GrapheneMimeTypesTest {
     }
 
     @Test
+    void resolvesBinaryGltfMimeTypeCaseInsensitively() {
+        String mimeType = GrapheneMimeTypes.resolve("assets/my-mod-id/models/lock.GLB");
+
+        assertEquals("model/gltf-binary", mimeType);
+    }
+
+    @Test
+    void resolvesJsonGltfMimeType() {
+        String mimeType = GrapheneMimeTypes.resolve("assets/my-mod-id/models/lock.gltf");
+
+        assertEquals("model/gltf+json", mimeType);
+    }
+
+    @Test
     void fallsBackToTextPlainForUnknownExtension() {
         String mimeType = GrapheneMimeTypes.resolve("assets/my-mod-id/web/custom.unknown");
 

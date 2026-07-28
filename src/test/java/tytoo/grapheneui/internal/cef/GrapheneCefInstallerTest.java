@@ -9,14 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class GrapheneCefInstallerTest {
     @Test
-    void macCompatibilityArgsKeepGpuWorkInProcess() {
+    void macCompatibilityArgsKeepGpuEnabledAndInProcess() {
         List<String> args = GrapheneCefInstaller.platformCompatibilityArgs(true, false, false);
 
-        assertEquals(List.of(
-                "--disable-gpu",
-                "--disable-gpu-compositing",
-                "--in-process-gpu"
-        ), args);
+        assertEquals(List.of("--in-process-gpu"), args);
     }
 
     @Test

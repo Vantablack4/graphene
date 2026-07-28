@@ -12,6 +12,8 @@ public final class GrapheneMimeTypes {
             new MimeTypeRule(".mjs", "text/javascript"),
             new MimeTypeRule(".css", "text/css"),
             new MimeTypeRule(".json", "application/json"),
+            new MimeTypeRule(".gltf", "model/gltf+json"),
+            new MimeTypeRule(".glb", "model/gltf-binary"),
             new MimeTypeRule(".png", "image/png"),
             new MimeTypeRule(".jpg", "image/jpeg"),
             new MimeTypeRule(".jpeg", "image/jpeg"),
