@@ -61,6 +61,8 @@ Common render options:
 - `visible`: false skips rendering without unregistering
 - `scale` or `size`: renderer-specific size override
 - `rotationX`, `rotationY`, `pivotY`: skin/entity orientation options
+- `fit: "contain"`, `alignY`: fit and vertically align a full skin inside its slot
+- `headRotationX`, `headRotationY`: rotate only a skin slot's head while its body remains stable
 - `decorations`, `fake`, `seed`, `countText`: item/block options
 - `followMouse`: entity option — `true` (default) makes living entities track the pointer while it is inside the slot, `"always"` tracks the pointer anywhere on the surface, `false` uses the static rotation options
 
