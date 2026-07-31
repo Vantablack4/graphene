@@ -16,6 +16,7 @@ import tytoo.grapheneui.api.nativeui.GrapheneNativeSlots;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceLoadListenerScope;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceSizingState;
 import tytoo.grapheneui.internal.browser.GrapheneBrowser;
+import tytoo.grapheneui.internal.browser.GraphenePageDefaults;
 import tytoo.grapheneui.internal.core.GrapheneCoreServices;
 import tytoo.grapheneui.internal.mc.McWindowScale;
 import tytoo.grapheneui.internal.nativeui.GrapheneNativeSlotRegistry;
@@ -49,6 +50,7 @@ public final class BrowserSurface implements AutoCloseable {
     private final BrowserSurfaceSizingState sizingState;
     private final BrowserSurfaceLoadListenerScope loadListenerScope;
     private final GrapheneCoreServices services;
+    private final BrowserSurfaceConfig config;
     private boolean closed;
 
     private BrowserSurface(Builder builder) {
@@ -69,14 +71,14 @@ public final class BrowserSurface implements AutoCloseable {
         CefClient cefClient = builder.client != null ? builder.client : services.runtimeInternal().requireClient();
         CefRequestContext requestContext = builder.requestContext != null ? builder.requestContext : CefRequestContext.getGlobalContext();
         builder.requestContextCustomizer.accept(requestContext);
-        BrowserSurfaceConfig config = builder.config != null ? builder.config : BrowserSurfaceConfig.defaults();
+        this.config = builder.config != null ? builder.config : BrowserSurfaceConfig.defaults();
 
         this.browser = new GrapheneBrowser(
                 cefClient,
                 builder.url,
                 builder.transparent,
                 requestContext,
-                config.toCefBrowserSettings()
+                this.config.toCefBrowserSettings()
         );
         this.bridge = services.runtimeInternal().attachBridge(this.browser);
         this.nativeSlots = new GrapheneNativeSlotRegistry(this.bridge);
@@ -85,6 +87,13 @@ public final class BrowserSurface implements AutoCloseable {
             @Override
             public void onLoadStart(CefBrowser browser, CefFrame frame, CefRequest.TransitionType transitionType) {
                 nativeSlots.clearPageSlots();
+            }
+
+            @Override
+            public void onLoadEnd(CefBrowser browser, CefFrame frame, int httpStatusCode) {
+                if (!config.allowsTextSelection()) {
+                    GraphenePageDefaults.disableTextSelection(browser, frame);
+                }
             }
         });
         this.browser.createImmediately();
@@ -176,6 +185,18 @@ public final class BrowserSurface implements AutoCloseable {
 
     public boolean isAutoResolution() {
         return sizingState.isAutoResolution();
+    }
+
+    public boolean allowsTextSelection() {
+        return config.allowsTextSelection();
+    }
+
+    public boolean allowsZoom() {
+        return config.allowsZoom();
+    }
+
+    public boolean allowsAltF4Close() {
+        return config.allowsAltF4Close();
     }
 
     public void setOwner(Object owner) {
@@ -458,6 +479,21 @@ public final class BrowserSurface implements AutoCloseable {
 
         public Builder maxFps(int maxFps) {
             this.config = this.config.withMaxFps(maxFps);
+            return this;
+        }
+
+        public Builder allowTextSelection(boolean allowed) {
+            this.config = this.config.withTextSelectionAllowed(allowed);
+            return this;
+        }
+
+        public Builder allowZoom(boolean allowed) {
+            this.config = this.config.withZoomAllowed(allowed);
+            return this;
+        }
+
+        public Builder allowAltF4Close(boolean allowed) {
+            this.config = this.config.withAltF4CloseAllowed(allowed);
             return this;
         }
 

@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "MinecraftWorldSurfaceInputMixin",
-    "ScreenMixin"
+    "ScreenMixin",
+    "WindowMixin"
   ],
   "injectors": {
     "defaultRequire": 1

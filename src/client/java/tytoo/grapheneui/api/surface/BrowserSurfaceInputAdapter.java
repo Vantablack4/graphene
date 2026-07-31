@@ -24,7 +24,13 @@ public final class BrowserSurfaceInputAdapter {
     public BrowserSurfaceInputAdapter(BrowserSurface surface) {
         this.surface = Objects.requireNonNull(surface, "surface");
         this.focusUtil = new GrapheneFocusUtil(this.surface.internalBrowser()::setFocus);
-        this.inputController = new GrapheneWebViewInputController(this.surface.internalBrowser(), this.focusUtil, this.surface.bridge());
+        this.inputController = new GrapheneWebViewInputController(
+                this.surface.internalBrowser(),
+                this.focusUtil,
+                this.surface.bridge(),
+                this.surface.allowsZoom(),
+                this.surface.allowsAltF4Close()
+        );
         this.focusUtil.addFocusListener(this.inputController::onFocusChanged);
         this.focusUtil.syncNativeFocus();
     }
@@ -128,7 +134,7 @@ public final class BrowserSurfaceInputAdapter {
             return false;
         }
 
-        surface.internalBrowser().keyEventByKeyCode(keyCode, scanCode, modifiers, true);
+        inputController.onKeyPressed(keyCode, scanCode, modifiers);
         return true;
     }
 
@@ -137,7 +143,7 @@ public final class BrowserSurfaceInputAdapter {
             return false;
         }
 
-        surface.internalBrowser().keyEventByKeyCode(keyCode, scanCode, modifiers, false);
+        inputController.onKeyReleased(keyCode, scanCode, modifiers);
         return true;
     }
 

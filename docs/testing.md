@@ -20,6 +20,7 @@ Current test classes include:
 - `GrapheneHttpServerRuntimeTest`
 - `GrapheneMimeTypesTest`
 - `BrowserSurfaceViewportMapperTest`
+- `GrapheneWebViewShortcutPolicyTest`
 - `GrapheneNativeSlotBoundsMapperTest`
 - `GrapheneDebugLogSelectorTest`
 - `GrapheneLinuxKeyEventPlatformResolverTest`
