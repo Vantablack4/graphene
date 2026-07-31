@@ -9,12 +9,20 @@ import net.minecraft.world.entity.player.PlayerModelType;
 import net.minecraft.world.entity.player.PlayerSkin;
 import tytoo.grapheneui.internal.mc.McClient;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 final class GrapheneVanillaSkinSlotRenderer implements GrapheneNativeSlotRenderer {
-    private PlayerModel wideModel;
-    private PlayerModel slimModel;
+    private static final int MODEL_CACHE_LIMIT = 64;
+
+    private final Map<ModelKey, PlayerModel> models = new LinkedHashMap<>(16, 0.75F, true) {
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<ModelKey, PlayerModel> eldest) {
+            return size() > MODEL_CACHE_LIMIT;
+        }
+    };
 
     @Override
     public Set<String> kinds() {
@@ -31,17 +39,37 @@ final class GrapheneVanillaSkinSlotRenderer implements GrapheneNativeSlotRendere
         }
 
         boolean slim = isSlim(payload, skin);
-        PlayerModel model = playerModel(slim);
+        PlayerModel model = playerModel(context.slotId(), slim);
         GrapheneNativeSlotScreenRect bounds = context.bounds();
         JsonObject renderOptions = context.renderOptions();
-        float scale = GrapheneNativeSlotJson.floatValue(
-                renderOptions,
-                Math.max(1.0F, Math.min(bounds.width(), bounds.height()) * 0.55F),
-                "scale"
-        );
+        boolean contain = "contain".equalsIgnoreCase(GrapheneNativeSlotJson.stringValue(renderOptions, null, "fit"));
+        float defaultScale = contain
+                ? GrapheneSkinSlotLayout.containScale(bounds)
+                : GrapheneSkinSlotLayout.legacy(bounds).scale();
+        float scale = GrapheneNativeSlotJson.floatValue(renderOptions, defaultScale, "scale");
+        GrapheneSkinSlotLayout layout = contain
+                ? GrapheneSkinSlotLayout.contain(
+                        bounds,
+                        GrapheneNativeSlotJson.floatValue(renderOptions, 0.5F, "alignY"),
+                        scale
+                )
+                : new GrapheneSkinSlotLayout(scale, bounds.y(), bounds.bottom());
         float rotationX = GrapheneNativeSlotJson.floatValue(renderOptions, -10.0F, "rotationX");
         float rotationY = GrapheneNativeSlotJson.floatValue(renderOptions, 25.0F, "rotationY");
         float pivotY = GrapheneNativeSlotJson.floatValue(renderOptions, 0.0625F, "pivotY");
+        float headRotationX = Math.clamp(
+                GrapheneNativeSlotJson.floatValue(renderOptions, 0.0F, "headRotationX"),
+                -45.0F,
+                45.0F
+        );
+        float headRotationY = Math.clamp(
+                GrapheneNativeSlotJson.floatValue(renderOptions, 0.0F, "headRotationY"),
+                -60.0F,
+                60.0F
+        );
+        model.head.resetPose();
+        model.head.xRot = (float) Math.toRadians(headRotationX);
+        model.head.yRot = (float) Math.toRadians(headRotationY);
 
         Identifier finalTexture = texture;
         context.withScissor(() -> context.graphics().skin(
@@ -52,9 +80,9 @@ final class GrapheneVanillaSkinSlotRenderer implements GrapheneNativeSlotRendere
                 rotationY,
                 pivotY,
                 bounds.x(),
-                bounds.y(),
+                layout.top(),
                 bounds.right(),
-                bounds.bottom()
+                layout.bottom()
         ));
     }
 
@@ -72,19 +100,16 @@ final class GrapheneVanillaSkinSlotRenderer implements GrapheneNativeSlotRendere
         return skin.model() == PlayerModelType.SLIM;
     }
 
-    private PlayerModel playerModel(boolean slim) {
-        if (slim) {
-            if (slimModel == null) {
-                slimModel = new PlayerModel(McClient.mc().getEntityModels().bakeLayer(ModelLayers.PLAYER_SLIM), true);
-            }
+    private PlayerModel playerModel(String slotId, boolean slim) {
+        return models.computeIfAbsent(
+                new ModelKey(slotId, slim),
+                ignored -> new PlayerModel(
+                        McClient.mc().getEntityModels().bakeLayer(slim ? ModelLayers.PLAYER_SLIM : ModelLayers.PLAYER),
+                        slim
+                )
+        );
+    }
 
-            return slimModel;
-        }
-
-        if (wideModel == null) {
-            wideModel = new PlayerModel(McClient.mc().getEntityModels().bakeLayer(ModelLayers.PLAYER), false);
-        }
-
-        return wideModel;
+    private record ModelKey(String slotId, boolean slim) {
     }
 }

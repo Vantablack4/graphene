@@ -36,6 +36,10 @@ final class GrapheneNativeSlotRenderContext {
         return bounds;
     }
 
+    String slotId() {
+        return slot.id();
+    }
+
     JsonObject payload() {
         return slot.payload();
     }
