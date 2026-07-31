@@ -22,6 +22,8 @@ public final class GrapheneWebViewInputController {
     private final GrapheneBrowser browser;
     private final GrapheneFocusUtil focusUtil;
     private final GrapheneBridge bridge;
+    private final boolean zoomAllowed;
+    private final boolean altF4CloseAllowed;
     private int lastBrowserMouseX = Integer.MIN_VALUE;
     private int lastBrowserMouseY = Integer.MIN_VALUE;
     private boolean primaryPointerButtonDown;
@@ -30,10 +32,18 @@ public final class GrapheneWebViewInputController {
     private int pressedButton = -1;
     private int pressedClickCount = 1;
 
-    public GrapheneWebViewInputController(GrapheneBrowser browser, GrapheneFocusUtil focusUtil, GrapheneBridge bridge) {
+    public GrapheneWebViewInputController(
+            GrapheneBrowser browser,
+            GrapheneFocusUtil focusUtil,
+            GrapheneBridge bridge,
+            boolean zoomAllowed,
+            boolean altF4CloseAllowed
+    ) {
         this.browser = Objects.requireNonNull(browser, "browser");
         this.focusUtil = Objects.requireNonNull(focusUtil, "focusUtil");
         this.bridge = Objects.requireNonNull(bridge, "bridge");
+        this.zoomAllowed = zoomAllowed;
+        this.altF4CloseAllowed = altF4CloseAllowed;
     }
 
     public boolean isPrimaryPointerButtonDown() {
@@ -113,7 +123,9 @@ public final class GrapheneWebViewInputController {
         int modifiers = GrapheneInputModifierUtil.currentModifiers();
         int wheelDelta = delta * rotation;
         if (GrapheneInputModifierUtil.isEditShortcutModifierDown(modifiers) && wheelDelta != 0) {
-            applyZoomDelta(wheelDelta);
+            if (zoomAllowed) {
+                applyZoomDelta(wheelDelta);
+            }
             return;
         }
 
@@ -121,11 +133,27 @@ public final class GrapheneWebViewInputController {
     }
 
     public void onKeyPressed(KeyEvent keyEvent) {
-        browser.keyEventByKeyCode(keyEvent.key(), keyEvent.scancode(), keyEvent.modifiers(), true);
+        onKeyPressed(keyEvent.key(), keyEvent.scancode(), keyEvent.modifiers());
     }
 
     public void onKeyReleased(KeyEvent keyEvent) {
-        browser.keyEventByKeyCode(keyEvent.key(), keyEvent.scancode(), keyEvent.modifiers(), false);
+        onKeyReleased(keyEvent.key(), keyEvent.scancode(), keyEvent.modifiers());
+    }
+
+    public void onKeyPressed(int keyCode, int scanCode, int modifiers) {
+        if (shouldBlockShortcut(keyCode, modifiers)) {
+            return;
+        }
+
+        browser.keyEventByKeyCode(keyCode, scanCode, modifiers, true);
+    }
+
+    public void onKeyReleased(int keyCode, int scanCode, int modifiers) {
+        if (shouldBlockShortcut(keyCode, modifiers)) {
+            return;
+        }
+
+        browser.keyEventByKeyCode(keyCode, scanCode, modifiers, false);
     }
 
     public void onCharacterTyped(CharacterEvent characterEvent) {
@@ -168,6 +196,14 @@ public final class GrapheneWebViewInputController {
 
     private double clampZoomLevel(double zoomLevel) {
         return Math.clamp(zoomLevel, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL);
+    }
+
+    private boolean shouldBlockShortcut(int keyCode, int modifiers) {
+        if (!zoomAllowed && GrapheneWebViewShortcutPolicy.isZoomShortcut(keyCode, modifiers)) {
+            return true;
+        }
+
+        return !altF4CloseAllowed && GrapheneWebViewShortcutPolicy.isAltF4Shortcut(keyCode, modifiers);
     }
 
     private void emitSideMouseButtonEvent(int button, boolean pressed) {

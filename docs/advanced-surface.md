@@ -15,11 +15,35 @@
 - `requestContextCustomizer(Consumer<CefRequestContext>)` mutate context before use
 - `config(BrowserSurfaceConfig)` browser settings config
 - `maxFps(int)` convenience setter for windowless frame rate
+- `allowTextSelection(boolean)` opt into selecting non-editable page text, default `false`
+- `allowZoom(boolean)` opt into Ctrl/Command-wheel and keyboard zoom, default `false`
+- `allowAltF4Close(boolean)` opt into Alt+F4 closing Minecraft while the surface is attached to a `GrapheneWebViewWidget`, default `false`
 - `settingsCustomizer(Consumer<CefBrowserSettings>)` mutate low-level CEF settings
 - `owner(Object)` register owner for lifecycle-managed cleanup
 
 When `maxFps(...)` is applied multiple times on the same `BrowserSurfaceConfig` or `BrowserSurface.Builder`,
 Graphene keeps the largest explicit value.
+
+## Browser Interaction Defaults
+
+Graphene surfaces behave like game UI by default:
+
+- ordinary page text is not selectable;
+- text inputs, text areas, and editable content remain selectable;
+- Ctrl/Command-wheel and Ctrl/Command `+`, `-`, or `0` do not zoom the surface;
+- Alt+F4 does not close Minecraft while a default-configured Graphene web view is present on the current screen.
+
+Enable an interaction only for a surface that needs browser-like behavior:
+
+```java
+BrowserSurfaceConfig config = BrowserSurfaceConfig.builder()
+        .allowTextSelection(true)
+        .allowZoom(true)
+        .allowAltF4Close(true)
+        .build();
+```
+
+Page CSS can also opt specific elements back into text selection with `user-select: text`.
 
 ## Sizing Modes
 
