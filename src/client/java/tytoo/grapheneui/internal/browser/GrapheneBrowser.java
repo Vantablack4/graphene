@@ -3,6 +3,9 @@ package tytoo.grapheneui.internal.browser;
 import com.mojang.blaze3d.platform.cursor.CursorType;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import tytoo.grapheneui.api.surface.BrowserSurfaceAccelerationStatus;
+import tytoo.grapheneui.api.surface.BrowserSurfaceFrameScheduling;
+import tytoo.grapheneui.api.surface.BrowserSurfacePerformanceSnapshot;
 import tytoo.grapheneui.api.surface.BrowserSurfaceTextureFrame;
 import org.cef.CefBrowserSettings;
 import org.cef.CefClient;
@@ -22,14 +25,17 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHandler, AutoCloseable {
     private final GrapheneBrowserGpuRenderer renderer;
+    private final GrapheneBrowserPerformanceMetrics performanceMetrics;
+    private final BrowserSurfaceFrameScheduling frameScheduling;
     private final boolean transparent;
     private final GrapheneInputBridge inputBridge = new GrapheneInputBridge();
-    private final GraphenePaintBuffer paintBuffer = new GraphenePaintBuffer();
+    private final GraphenePaintBuffer paintBuffer;
     private final GrapheneFocusUtil focusUtil = new GrapheneFocusUtil(this::setNativeFocus);
     private final Object dragSessionLock = new Object();
     private final Rectangle browserRect = new Rectangle(0, 0, 1, 1);
@@ -43,7 +49,15 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
 
     @SuppressWarnings("unused") // Util constructor for simple browser creation with default settings.
     public GrapheneBrowser(CefClient client, String url, boolean transparent, CefRequestContext context) {
-        this(client, url, transparent, context, new CefBrowserSettings());
+        this(
+                client,
+                url,
+                transparent,
+                context,
+                new CefBrowserSettings(),
+                BrowserSurfaceFrameScheduling.AUTOMATIC,
+                false
+        );
     }
 
     public GrapheneBrowser(
@@ -53,7 +67,39 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
             CefRequestContext context,
             CefBrowserSettings browserSettings
     ) {
-        this(client, url, transparent, context, browserSettings, null, null);
+        this(
+                client,
+                url,
+                transparent,
+                context,
+                browserSettings,
+                browserSettings != null && browserSettings.external_begin_frame_enabled
+                        ? BrowserSurfaceFrameScheduling.RENDER_DRIVEN
+                        : BrowserSurfaceFrameScheduling.AUTOMATIC,
+                false
+        );
+    }
+
+    public GrapheneBrowser(
+            CefClient client,
+            String url,
+            boolean transparent,
+            CefRequestContext context,
+            CefBrowserSettings browserSettings,
+            BrowserSurfaceFrameScheduling frameScheduling,
+            boolean performanceMetricsEnabled
+    ) {
+        this(
+                client,
+                url,
+                transparent,
+                context,
+                browserSettings,
+                frameScheduling,
+                performanceMetricsEnabled,
+                null,
+                null
+        );
     }
 
     private GrapheneBrowser(
@@ -62,12 +108,24 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
             boolean transparent,
             CefRequestContext context,
             CefBrowserSettings browserSettings,
+            BrowserSurfaceFrameScheduling frameScheduling,
+            boolean performanceMetricsEnabled,
             CefBrowserWindowless parent,
             Point inspectAt
     ) {
-        super(client, url, context, parent, inspectAt, Objects.requireNonNull(browserSettings, "browserSettings"));
+        super(
+                client,
+                url,
+                context,
+                parent,
+                inspectAt,
+                requireSupportedSettings(browserSettings, frameScheduling)
+        );
         this.transparent = transparent;
-        this.renderer = new GrapheneBrowserGpuRenderer(transparent);
+        this.frameScheduling = Objects.requireNonNull(frameScheduling, "frameScheduling");
+        this.performanceMetrics = performanceMetricsEnabled ? new GrapheneBrowserPerformanceMetrics() : null;
+        this.paintBuffer = new GraphenePaintBuffer(performanceMetrics);
+        this.renderer = new GrapheneBrowserGpuRenderer(transparent, performanceMetrics);
     }
 
     private static int preferredDragOperation(int mask) {
@@ -84,6 +142,19 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
         }
 
         return CefDragData.DragOperations.DRAG_OPERATION_NONE;
+    }
+
+    private static CefBrowserSettings requireSupportedSettings(
+            CefBrowserSettings browserSettings,
+            BrowserSurfaceFrameScheduling frameScheduling
+    ) {
+        CefBrowserSettings settings = Objects.requireNonNull(browserSettings, "browserSettings");
+        BrowserSurfaceFrameScheduling scheduling = Objects.requireNonNull(frameScheduling, "frameScheduling");
+        if (settings.shared_texture_enabled) {
+            throw new IllegalArgumentException(BrowserSurfaceAccelerationStatus.SHARED_TEXTURE_UNAVAILABLE_REASON);
+        }
+        settings.external_begin_frame_enabled = scheduling == BrowserSurfaceFrameScheduling.RENDER_DRIVEN;
+        return settings;
     }
 
     @Override
@@ -227,6 +298,8 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
                 false,
                 context,
                 new CefBrowserSettings(),
+                BrowserSurfaceFrameScheduling.AUTOMATIC,
+                false,
                 parent,
                 inspectAt
         );
@@ -243,9 +316,10 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
             int sourceWidth,
             int sourceHeight
     ) {
+        requestRenderDrivenFrame();
         renderer.render(
                 graphics,
-                paintBuffer.snapshot(),
+                paintBuffer.snapshot(renderer.mainUploadedVersion(), renderer.popupUploadedVersion()),
                 x,
                 y,
                 width,
@@ -263,8 +337,9 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
             int sourceWidth,
             int sourceHeight
     ) {
+        requestRenderDrivenFrame();
         return renderer.prepareMainFrameTexture(
-                paintBuffer.snapshot(),
+                paintBuffer.snapshot(renderer.mainUploadedVersion(), renderer.popupUploadedVersion()),
                 sourceX,
                 sourceY,
                 sourceWidth,
@@ -392,6 +467,12 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
         executeJavaScript(script, url, 0);
     }
 
+    public Optional<BrowserSurfacePerformanceSnapshot> performanceSnapshot() {
+        return performanceMetrics == null
+                ? Optional.empty()
+                : Optional.of(performanceMetrics.snapshot());
+    }
+
     public String currentUrl() {
         String currentUrl = getURL();
         if (currentUrl == null || currentUrl.isBlank()) {
@@ -403,6 +484,17 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
 
     private void setNativeFocus(boolean enable) {
         super.setFocus(enable);
+    }
+
+    private void requestRenderDrivenFrame() {
+        if (frameScheduling != BrowserSurfaceFrameScheduling.RENDER_DRIVEN || closed) {
+            return;
+        }
+
+        sendExternalBeginFrame();
+        if (performanceMetrics != null) {
+            performanceMetrics.recordExternalBeginFrame();
+        }
     }
 
     private void createBrowserIfRequired() {

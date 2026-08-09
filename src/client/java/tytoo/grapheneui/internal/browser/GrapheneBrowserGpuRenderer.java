@@ -21,8 +21,16 @@ final class GrapheneBrowserGpuRenderer implements AutoCloseable {
     private int cachedMainFrameRegionWidth;
     private int cachedMainFrameRegionHeight;
 
-    GrapheneBrowserGpuRenderer(boolean transparent) {
-        this.frameUploader = new GrapheneBrowserFrameUploader(transparent);
+    GrapheneBrowserGpuRenderer(boolean transparent, GrapheneBrowserPerformanceMetrics performanceMetrics) {
+        this.frameUploader = new GrapheneBrowserFrameUploader(transparent, performanceMetrics);
+    }
+
+    long mainUploadedVersion() {
+        return mainTexture.lastUploadedVersion();
+    }
+
+    long popupUploadedVersion() {
+        return popupTexture.lastUploadedVersion();
     }
 
     void render(

@@ -18,6 +18,9 @@
 - `allowTextSelection(boolean)` opt into selecting non-editable page text, default `false`
 - `allowZoom(boolean)` opt into Ctrl/Command-wheel and keyboard zoom, default `false`
 - `allowAltF4Close(boolean)` opt into Alt+F4 closing Minecraft while the surface is attached to a `GrapheneWebViewWidget`, default `false`
+- `frameScheduling(BrowserSurfaceFrameScheduling)` Chromium paint scheduling mode
+- `performanceMetrics(boolean)` opt-in cumulative capture/upload counters
+- `preferAcceleratedPaint(boolean)` request shared-texture acceleration with a safe software fallback
 - `settingsCustomizer(Consumer<CefBrowserSettings>)` mutate low-level CEF settings
 - `owner(Object)` register owner for lifecycle-managed cleanup
 
@@ -85,6 +88,75 @@ surface.render(guiGraphics, x, y, width, height);
 ```
 
 `render(...)` also triggers bridge bootstrap fallback checks and submits the browser frame through Minecraft's GUI render pipeline.
+
+## Animated And WebGL Surfaces
+
+Graphene retains bounded dirty-region history and merges/clamps CEF damage before both CPU capture and GPU upload.
+If Minecraft skips one or more Chromium paints, the next render uploads the cumulative damage instead of forcing a
+whole-frame upload. After the four capture slots have warmed, Graphene also refreshes a slot from cumulative damage
+instead of copying the entire CEF buffer when the retained history proves that partial work is safe.
+
+For continuously animated pages, opt into render-driven Chromium frames:
+
+```java
+BrowserSurface surface = BrowserSurface.builder()
+        .url("app://assets/my-mod-id/web/lockpick.html")
+        .surfaceSize(640, 360)
+        .autoResolution()
+        .maxFps(60)
+        .frameScheduling(BrowserSurfaceFrameScheduling.RENDER_DRIVEN)
+        .build();
+```
+
+`RENDER_DRIVEN` enables CEF external begin frames and requests one frame for each `render(...)` or
+`prepareTextureFrame()` call. `AUTOMATIC` remains the compatibility default. Use render-driven scheduling for a surface
+that is rendered once per Minecraft frame; avoid calling both render methods for the same surface in one frame.
+
+Auto resolution uses physical framebuffer scale. A full-screen browser can therefore be much larger than its logical
+GUI dimensions. If a scene is fill-rate or upload-bandwidth limited, use an explicit `resolution(...)` chosen for the
+content instead of rendering a 3D canvas at a needlessly high backing resolution.
+
+## Performance Metrics
+
+Metrics are disabled by default and allocate counters only when enabled:
+
+```java
+BrowserSurface surface = BrowserSurface.builder()
+        .performanceMetrics(true)
+        .build();
+
+surface.performanceSnapshot().ifPresent(snapshot -> {
+    long copied = snapshot.capturedBytes();
+    long uploaded = snapshot.uploadedBytes();
+    long coalesced = snapshot.coalescedPaintFrames();
+});
+```
+
+`BrowserSurfacePerformanceSnapshot` is cumulative and safe to read while CEF paints. Capture and upload timing measures
+Graphene's CPU-side work and texture submission; it does not wait for GPU completion. A high
+`dirtyHistoryFallbacks()` value indicates the renderer or a capture slot fell farther behind than the retained damage
+window, or otherwise could not prove a partial update safe.
+
+## Shared-Texture Acceleration
+
+The pinned JCEF exposes accelerated paint through platform-native handles, but those handles are valid only during the
+CEF UI-thread callback. Minecraft texture creation/import must run on its render thread. Without a safe cross-thread
+ownership and synchronization contract, retaining the handle is invalid and blocking the CEF callback risks deadlock.
+
+Graphene therefore keeps `shared_texture_enabled` off and uses the optimized software OSR buffer path. Requesting a
+preference does not claim acceleration:
+
+```java
+BrowserSurface surface = BrowserSurface.builder()
+        .preferAcceleratedPaint(true)
+        .build();
+
+BrowserSurfaceAccelerationStatus status = surface.accelerationStatus();
+// status.sharedTextureActive() is false; the blocker is in sharedTextureUnavailableReason().
+```
+
+Low-level settings customizers that force `shared_texture_enabled` are rejected, because CEF would stop delivering the
+software paint buffer that Graphene can safely consume.
 
 ## Navigation And State
 

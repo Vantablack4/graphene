@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class BrowserSurfaceConfigTest {
@@ -15,6 +16,8 @@ final class BrowserSurfaceConfigTest {
         assertFalse(config.allowsTextSelection());
         assertFalse(config.allowsZoom());
         assertFalse(config.allowsAltF4Close());
+        assertFalse(config.toCefBrowserSettings().external_begin_frame_enabled);
+        assertFalse(config.performanceMetricsEnabled());
     }
 
     @Test
@@ -38,13 +41,18 @@ final class BrowserSurfaceConfigTest {
                 .allowAltF4Close(true)
                 .build()
                 .withMaxFps(144)
-                .withSettingsCustomizer(settings -> settings.shared_texture_enabled = true);
+                .withFrameScheduling(BrowserSurfaceFrameScheduling.RENDER_DRIVEN)
+                .withPerformanceMetrics(true)
+                .withAcceleratedPaintPreference(true)
+                .withSettingsCustomizer(settings -> settings.windowless_frame_rate = 165);
 
         assertTrue(config.allowsTextSelection());
         assertTrue(config.allowsZoom());
         assertTrue(config.allowsAltF4Close());
-        assertEquals(144, config.toCefBrowserSettings().windowless_frame_rate);
-        assertTrue(config.toCefBrowserSettings().shared_texture_enabled);
+        assertEquals(165, config.toCefBrowserSettings().windowless_frame_rate);
+        assertTrue(config.toCefBrowserSettings().external_begin_frame_enabled);
+        assertTrue(config.performanceMetricsEnabled());
+        assertTrue(config.acceleratedPaintPreferred());
     }
 
     @Test
@@ -75,5 +83,56 @@ final class BrowserSurfaceConfigTest {
                 .build();
 
         assertEquals(165, config.toCefBrowserSettings().windowless_frame_rate);
+    }
+
+    @Test
+    void renderDrivenSchedulingEnablesExternalBeginFrames() {
+        BrowserSurfaceConfig config = BrowserSurfaceConfig.builder()
+                .frameScheduling(BrowserSurfaceFrameScheduling.RENDER_DRIVEN)
+                .performanceMetrics(true)
+                .build();
+
+        assertTrue(config.toCefBrowserSettings().external_begin_frame_enabled);
+        assertTrue(config.performanceMetricsEnabled());
+    }
+
+    @Test
+    void typedFrameSchedulingOwnsTheLowLevelCefFlag() {
+        BrowserSurfaceConfig config = BrowserSurfaceConfig.builder()
+                .settingsCustomizer(settings -> settings.external_begin_frame_enabled = true)
+                .build();
+
+        assertFalse(config.toCefBrowserSettings().external_begin_frame_enabled);
+    }
+
+    @Test
+    void unsafeSharedTextureCustomizerIsRejectedWithThePublicReason() {
+        BrowserSurfaceConfig config = BrowserSurfaceConfig.builder()
+                .settingsCustomizer(settings -> settings.shared_texture_enabled = true)
+                .build();
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                config::toCefBrowserSettings
+        );
+        assertEquals(BrowserSurfaceAccelerationStatus.SHARED_TEXTURE_UNAVAILABLE_REASON, exception.getMessage());
+    }
+
+    @Test
+    void acceleratedPaintPreferenceRemainsAnObservableSoftwareFallback() {
+        BrowserSurfaceConfig config = BrowserSurfaceConfig.builder()
+                .preferAcceleratedPaint(true)
+                .build();
+        BrowserSurfaceAccelerationStatus status = BrowserSurfaceAccelerationStatus.softwareFallback(
+                config.acceleratedPaintPreferred()
+        );
+
+        assertTrue(status.sharedTextureRequested());
+        assertFalse(status.sharedTextureActive());
+        assertEquals(BrowserSurfaceAccelerationStatus.SOFTWARE_OSR_BUFFER_PATH, status.activePath());
+        assertEquals(
+                BrowserSurfaceAccelerationStatus.SHARED_TEXTURE_UNAVAILABLE_REASON,
+                status.sharedTextureUnavailableReason()
+        );
     }
 }

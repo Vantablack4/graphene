@@ -85,6 +85,10 @@ final class GrapheneBrowserGpuTexture implements AutoCloseable {
         return lastUploadedVersion == frameVersion;
     }
 
+    long lastUploadedVersion() {
+        return lastUploadedVersion;
+    }
+
     void markUploaded(long frameVersion) {
         lastUploadedVersion = frameVersion;
     }

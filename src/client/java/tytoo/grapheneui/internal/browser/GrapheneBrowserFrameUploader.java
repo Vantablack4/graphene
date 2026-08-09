@@ -8,18 +8,20 @@ import com.mojang.blaze3d.textures.GpuTexture;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.concurrent.CompletableFuture;
 
 final class GrapheneBrowserFrameUploader {
     private static final int BYTES_PER_PIXEL = NativeImage.Format.RGBA.components();
-    private static final int DIRTY_RECT_MAX_PARTIAL_UPLOADS = 64;
     private static final double DIRTY_RECT_FULL_UPLOAD_THRESHOLD = 0.45D;
 
     private final boolean transparent;
+    private final GrapheneBrowserPerformanceMetrics performanceMetrics;
     private ByteBuffer uploadScratch;
 
-    GrapheneBrowserFrameUploader(boolean transparent) {
+    GrapheneBrowserFrameUploader(boolean transparent, GrapheneBrowserPerformanceMetrics performanceMetrics) {
         this.transparent = transparent;
+        this.performanceMetrics = performanceMetrics;
     }
 
     private static Rectangle clampDirtyRect(Rectangle dirtyRect, int frameWidth, int frameHeight) {
@@ -44,18 +46,41 @@ final class GrapheneBrowserFrameUploader {
             return;
         }
 
-        // Dirty rects describe the delta from the previous paint frame only. If the texture
-        // does not hold exactly frameVersion - 1 (paints were skipped, or the texture was
-        // just (re)created with undefined contents), a partial upload would leave stale
-        // pixels behind, so the full frame must be uploaded instead.
-        boolean contiguous = texture.isUploaded(frame.frameVersion() - 1L);
-        if (!contiguous || frame.fullReRender() || shouldUploadFullFrame(frame.dirtyRects(), frame.width(), frame.height())) {
+        long startedAt = performanceMetrics == null ? 0L : System.nanoTime();
+        long previousVersion = texture.lastUploadedVersion();
+        boolean fullUpload = requiresFullUpload(
+                previousVersion,
+                frame.fullReRender(),
+                frame.dirtyRects(),
+                frame.width(),
+                frame.height()
+        );
+        long uploadedBytes;
+        if (fullUpload) {
             uploadFullFrame(texture.texture(), frame.buffer(), frame.width(), frame.height());
+            uploadedBytes = performanceMetrics == null
+                    ? 0L
+                    : (long) frame.width() * frame.height() * BYTES_PER_PIXEL;
         } else {
             uploadDirtyRects(texture.texture(), frame.buffer(), frame.dirtyRects(), frame.width(), frame.height());
+            uploadedBytes = performanceMetrics == null
+                    ? 0L
+                    : dirtyBytes(frame.dirtyRects(), frame.width(), frame.height());
         }
 
         texture.markUploaded(frame.frameVersion());
+        if (performanceMetrics != null) {
+            long coalescedFrames = previousVersion < 0L
+                    ? 0L
+                    : Math.max(0L, frame.frameVersion() - previousVersion - 1L);
+            performanceMetrics.recordUpload(
+                    fullUpload,
+                    uploadedBytes,
+                    coalescedFrames,
+                    frame.historyFallback(),
+                    System.nanoTime() - startedAt
+            );
+        }
     }
 
     CompletableFuture<BufferedImage> createScreenshot(GraphenePaintBuffer.Snapshot snapshot) {
@@ -122,12 +147,13 @@ final class GrapheneBrowserFrameUploader {
         uploadScratch = null;
     }
 
-    private boolean shouldUploadFullFrame(Rectangle[] dirtyRects, int frameWidth, int frameHeight) {
+    static boolean shouldUploadFullFrame(Rectangle[] dirtyRects, int frameWidth, int frameHeight) {
         if (dirtyRects == null || dirtyRects.length == 0) {
             return true;
         }
 
-        if (dirtyRects.length >= DIRTY_RECT_MAX_PARTIAL_UPLOADS) {
+        GrapheneDirtyRegion damage = GrapheneDirtyRegion.from(dirtyRects, frameWidth, frameHeight);
+        if (damage.isFull()) {
             return true;
         }
 
@@ -136,30 +162,46 @@ final class GrapheneBrowserFrameUploader {
             return true;
         }
 
-        long dirtyPixels = 0L;
+        long dirtyPixels = damage.pixelCount(frameWidth, frameHeight);
+        return dirtyPixels <= 0L
+                || (double) dirtyPixels / fullFramePixels >= DIRTY_RECT_FULL_UPLOAD_THRESHOLD;
+    }
+
+    static boolean requiresFullUpload(
+            long previousVersion,
+            boolean fullReRender,
+            Rectangle[] dirtyRects,
+            int frameWidth,
+            int frameHeight
+    ) {
+        return previousVersion < 0L
+                || fullReRender
+                || shouldUploadFullFrame(dirtyRects, frameWidth, frameHeight);
+    }
+
+    private long dirtyBytes(Rectangle[] dirtyRects, int frameWidth, int frameHeight) {
+        long bytes = 0L;
         for (Rectangle dirtyRect : dirtyRects) {
             Rectangle clampedRect = clampDirtyRect(dirtyRect, frameWidth, frameHeight);
             if (clampedRect != null) {
-                dirtyPixels += (long) clampedRect.width * clampedRect.height;
-                if ((double) dirtyPixels / fullFramePixels >= DIRTY_RECT_FULL_UPLOAD_THRESHOLD) {
-                    return true;
-                }
+                bytes += (long) clampedRect.width * clampedRect.height * BYTES_PER_PIXEL;
             }
         }
-
-        return dirtyPixels <= 0L;
+        return bytes;
     }
 
     private void uploadFullFrame(GpuTexture texture, ByteBuffer buffer, int frameWidth, int frameHeight) {
         int frameBytes = frameWidth * frameHeight * BYTES_PER_PIXEL;
         ByteBuffer converted = ensureScratch(frameBytes);
+        converted.order(ByteOrder.BIG_ENDIAN);
         converted.clear();
 
         ByteBuffer source = buffer.duplicate();
+        source.order(ByteOrder.BIG_ENDIAN);
         source.position(0);
         source.limit(frameBytes);
         while (source.hasRemaining()) {
-            writePixel(converted, source.get(), source.get(), source.get(), source.get());
+            converted.putInt(swizzlePixel(source.getInt(), transparent));
         }
 
         converted.flip();
@@ -211,16 +253,12 @@ final class GrapheneBrowserFrameUploader {
     }
 
     private void convertRegion(ByteBuffer sourceBuffer, int sourceStride, int x, int y, int width, int height, ByteBuffer targetBuffer) {
+        sourceBuffer = sourceBuffer.duplicate().order(ByteOrder.BIG_ENDIAN);
+        targetBuffer.order(ByteOrder.BIG_ENDIAN);
         for (int row = 0; row < height; row++) {
             int sourceIndex = ((y + row) * sourceStride + x) * BYTES_PER_PIXEL;
             for (int column = 0; column < width; column++) {
-                writePixel(
-                        targetBuffer,
-                        sourceBuffer.get(sourceIndex),
-                        sourceBuffer.get(sourceIndex + 1),
-                        sourceBuffer.get(sourceIndex + 2),
-                        sourceBuffer.get(sourceIndex + 3)
-                );
+                targetBuffer.putInt(swizzlePixel(sourceBuffer.getInt(sourceIndex), transparent));
                 sourceIndex += BYTES_PER_PIXEL;
             }
         }
@@ -267,11 +305,10 @@ final class GrapheneBrowserFrameUploader {
         }
     }
 
-    private void writePixel(ByteBuffer targetBuffer, byte blue, byte green, byte red, byte sourceAlpha) {
-        byte alpha = transparent ? sourceAlpha : (byte) 0xFF;
-        targetBuffer.put(red);
-        targetBuffer.put(green);
-        targetBuffer.put(blue);
-        targetBuffer.put(alpha);
+    static int swizzlePixel(int bgra, boolean transparent) {
+        int rgba = ((bgra & 0x0000FF00) << 16)
+                | (bgra & 0x00FF00FF)
+                | ((bgra >>> 16) & 0x0000FF00);
+        return transparent ? rgba : rgba | 0x000000FF;
     }
 }
