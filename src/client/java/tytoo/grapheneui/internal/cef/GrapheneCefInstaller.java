@@ -34,6 +34,8 @@ public final class GrapheneCefInstaller {
     private static final Gson GSON = new Gson();
     private static final String JCEFGITHUB_BUILD_META_RESOURCE_PATH = "/jcefgithub_build_meta.json";
     private static final String JCEFGITHUB_VERSION_FIELD = "version";
+    private static final String ALLOW_UNSAFE_SOFTWARE_WEBGL_PROPERTY =
+            "graphene.cef.allowUnsafeSoftwareWebGl";
 
     private GrapheneCefInstaller() {
     }
@@ -239,7 +241,8 @@ public final class GrapheneCefInstaller {
         List<String> compatibilityArgs = platformCompatibilityArgs(
                 GraphenePlatform.isMac(),
                 GraphenePlatform.isLinux(),
-                GraphenePlatform.isWaylandSession()
+                GraphenePlatform.isWaylandSession(),
+                Boolean.getBoolean(ALLOW_UNSAFE_SOFTWARE_WEBGL_PROPERTY)
         );
         if (!compatibilityArgs.isEmpty()) {
             cefAppBuilder.addJcefArgs(compatibilityArgs.toArray(String[]::new));
@@ -251,6 +254,15 @@ public final class GrapheneCefInstaller {
     }
 
     static List<String> platformCompatibilityArgs(boolean mac, boolean linux, boolean waylandSession) {
+        return platformCompatibilityArgs(mac, linux, waylandSession, false);
+    }
+
+    static List<String> platformCompatibilityArgs(
+            boolean mac,
+            boolean linux,
+            boolean waylandSession,
+            boolean allowUnsafeSoftwareWebGl
+    ) {
         if (mac) {
             return List.of("--in-process-gpu");
         }
@@ -274,6 +286,11 @@ public final class GrapheneCefInstaller {
 
         if (waylandSession) {
             args.add("--ozone-platform=x11");
+        }
+        if (allowUnsafeSoftwareWebGl) {
+            args.add("--use-gl=angle");
+            args.add("--use-angle=swiftshader-webgl");
+            args.add("--enable-unsafe-swiftshader");
         }
 
         return args;

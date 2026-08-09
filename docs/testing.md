@@ -21,6 +21,9 @@ Current test classes include:
 - `GrapheneMimeTypesTest`
 - `BrowserSurfaceViewportMapperTest`
 - `GrapheneWebViewShortcutPolicyTest`
+- `GrapheneDirtyRectHistoryTest`
+- `GraphenePaintBufferTest`
+- `GrapheneBrowserFrameUploaderTest`
 - `GrapheneNativeSlotBoundsMapperTest`
 - `GrapheneDebugLogSelectorTest`
 - `GrapheneLinuxKeyEventPlatformResolverTest`
@@ -38,6 +41,17 @@ Use the debug client and bundled pages to validate end-to-end behavior:
 
 `automated-tests.html` calls the Java-side debug runner over the bridge (`debug:tests:run`) and renders pass/fail results.
 
+The debug browser surface runs with render-driven frames and performance metrics enabled. From its DevTools console,
+inspect the live cumulative transport counters and shared-texture fallback reason with:
+
+```js
+await globalThis.grapheneBridge.request("debug:performance:snapshot", {});
+```
+
+For animated/WebGL changes, keep the browser visible while interacting with the scene, sample the counters before and
+after the motion, and verify that `partialFrameCopies` and `partialFrameUploads` rise without a matching stream of
+`dirtyHistoryFallbacks`. Also inspect Minecraft frame timing; the snapshot measures CPU submission, not GPU completion.
+
 ## Commands
 
 Run from repository root:
@@ -53,6 +67,13 @@ Run from repository root:
 ```
 
 For logging checks, run one pass without `-PgrapheneDebug` and one with a selector. Remove `-PgrapheneDebug` again to disable Graphene debug logs.
+
+Linux/Xvfb lanes without a hardware GPU may opt into Chromium's lower-security
+SwiftShader WebGL fallback with the JVM property
+`graphene.cef.allowUnsafeSoftwareWebGl=true`. Keep this disabled for ordinary
+clients and only use it for trusted embedded content in isolated test runs.
+The opt-in applies Chromium's documented SwANGLE WebGL fallback flags rather
+than changing the normal hardware rendering path.
 
 ## When Adding Features
 

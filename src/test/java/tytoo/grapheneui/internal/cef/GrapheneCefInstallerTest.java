@@ -31,4 +31,27 @@ final class GrapheneCefInstallerTest {
 
         assertTrue(args.contains("--ozone-platform=x11"));
     }
+
+    @Test
+    void linuxSoftwareWebGlFallbackRequiresExplicitUnsafeOptIn() {
+        List<String> defaultArgs = GrapheneCefInstaller.platformCompatibilityArgs(
+                false,
+                true,
+                false,
+                false
+        );
+        List<String> optedInArgs = GrapheneCefInstaller.platformCompatibilityArgs(
+                false,
+                true,
+                false,
+                true
+        );
+
+        assertTrue(defaultArgs.stream().noneMatch("--enable-unsafe-swiftshader"::equals));
+        assertTrue(defaultArgs.stream().noneMatch("--use-gl=angle"::equals));
+        assertTrue(defaultArgs.stream().noneMatch("--use-angle=swiftshader-webgl"::equals));
+        assertTrue(optedInArgs.contains("--use-gl=angle"));
+        assertTrue(optedInArgs.contains("--use-angle=swiftshader-webgl"));
+        assertTrue(optedInArgs.contains("--enable-unsafe-swiftshader"));
+    }
 }

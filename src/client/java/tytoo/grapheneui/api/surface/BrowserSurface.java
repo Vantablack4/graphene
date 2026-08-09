@@ -23,6 +23,7 @@ import tytoo.grapheneui.internal.nativeui.GrapheneNativeSlotRegistry;
 
 import java.awt.*;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
@@ -51,6 +52,7 @@ public final class BrowserSurface implements AutoCloseable {
     private final BrowserSurfaceLoadListenerScope loadListenerScope;
     private final GrapheneCoreServices services;
     private final BrowserSurfaceConfig config;
+    private final BrowserSurfaceAccelerationStatus accelerationStatus;
     private boolean closed;
 
     private BrowserSurface(Builder builder) {
@@ -72,13 +74,18 @@ public final class BrowserSurface implements AutoCloseable {
         CefRequestContext requestContext = builder.requestContext != null ? builder.requestContext : CefRequestContext.getGlobalContext();
         builder.requestContextCustomizer.accept(requestContext);
         this.config = builder.config != null ? builder.config : BrowserSurfaceConfig.defaults();
+        this.accelerationStatus = BrowserSurfaceAccelerationStatus.softwareFallback(
+                this.config.acceleratedPaintPreferred()
+        );
 
         this.browser = new GrapheneBrowser(
                 cefClient,
                 builder.url,
                 builder.transparent,
                 requestContext,
-                this.config.toCefBrowserSettings()
+                this.config.toCefBrowserSettings(),
+                this.config.frameScheduling(),
+                this.config.performanceMetricsEnabled()
         );
         this.bridge = services.runtimeInternal().attachBridge(this.browser);
         this.nativeSlots = new GrapheneNativeSlotRegistry(this.bridge);
@@ -137,6 +144,14 @@ public final class BrowserSurface implements AutoCloseable {
 
     public String currentUrl() {
         return browser.currentUrl();
+    }
+
+    public Optional<BrowserSurfacePerformanceSnapshot> performanceSnapshot() {
+        return browser.performanceSnapshot();
+    }
+
+    public BrowserSurfaceAccelerationStatus accelerationStatus() {
+        return accelerationStatus;
     }
 
     public void loadUrl(String url) {
@@ -499,6 +514,21 @@ public final class BrowserSurface implements AutoCloseable {
 
         public Builder settingsCustomizer(Consumer<CefBrowserSettings> settingsCustomizer) {
             this.config = this.config.withSettingsCustomizer(settingsCustomizer);
+            return this;
+        }
+
+        public Builder frameScheduling(BrowserSurfaceFrameScheduling frameScheduling) {
+            this.config = this.config.withFrameScheduling(frameScheduling);
+            return this;
+        }
+
+        public Builder performanceMetrics(boolean enabled) {
+            this.config = this.config.withPerformanceMetrics(enabled);
+            return this;
+        }
+
+        public Builder preferAcceleratedPaint(boolean preferred) {
+            this.config = this.config.withAcceleratedPaintPreference(preferred);
             return this;
         }
 

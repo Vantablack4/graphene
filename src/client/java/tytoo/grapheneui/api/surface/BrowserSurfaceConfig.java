@@ -25,14 +25,22 @@ public final class BrowserSurfaceConfig {
     private final boolean zoomAllowed;
     private final boolean altF4CloseAllowed;
     private final Consumer<CefBrowserSettings> settingsCustomizer;
+    private final BrowserSurfaceFrameScheduling frameScheduling;
+    private final boolean performanceMetricsEnabled;
+    private final boolean acceleratedPaintPreferred;
 
     private BrowserSurfaceConfig(Builder builder) {
-        this.windowlessFrameRate = builder.windowlessFrameRate;
-        this.windowlessFrameRateExplicit = builder.windowlessFrameRateExplicit;
-        this.textSelectionAllowed = builder.textSelectionAllowed;
-        this.zoomAllowed = builder.zoomAllowed;
-        this.altF4CloseAllowed = builder.altF4CloseAllowed;
-        this.settingsCustomizer = Objects.requireNonNullElse(builder.settingsCustomizer, NO_OP_SETTINGS_CUSTOMIZER);
+        this(
+                builder.windowlessFrameRate,
+                builder.windowlessFrameRateExplicit,
+                builder.textSelectionAllowed,
+                builder.zoomAllowed,
+                builder.altF4CloseAllowed,
+                builder.settingsCustomizer,
+                builder.frameScheduling,
+                builder.performanceMetricsEnabled,
+                builder.acceleratedPaintPreferred
+        );
     }
 
     private BrowserSurfaceConfig(
@@ -41,7 +49,10 @@ public final class BrowserSurfaceConfig {
             boolean textSelectionAllowed,
             boolean zoomAllowed,
             boolean altF4CloseAllowed,
-            Consumer<CefBrowserSettings> settingsCustomizer
+            Consumer<CefBrowserSettings> settingsCustomizer,
+            BrowserSurfaceFrameScheduling frameScheduling,
+            boolean performanceMetricsEnabled,
+            boolean acceleratedPaintPreferred
     ) {
         this.windowlessFrameRate = windowlessFrameRate;
         this.windowlessFrameRateExplicit = windowlessFrameRateExplicit;
@@ -49,6 +60,9 @@ public final class BrowserSurfaceConfig {
         this.zoomAllowed = zoomAllowed;
         this.altF4CloseAllowed = altF4CloseAllowed;
         this.settingsCustomizer = Objects.requireNonNullElse(settingsCustomizer, NO_OP_SETTINGS_CUSTOMIZER);
+        this.frameScheduling = Objects.requireNonNull(frameScheduling, "frameScheduling");
+        this.performanceMetricsEnabled = performanceMetricsEnabled;
+        this.acceleratedPaintPreferred = acceleratedPaintPreferred;
     }
 
     public static BrowserSurfaceConfig defaults() {
@@ -70,70 +84,130 @@ public final class BrowserSurfaceConfig {
         int mergedFrameRate = windowlessFrameRateExplicit
                 ? Math.max(windowlessFrameRate, maxFps)
                 : maxFps;
-        return new BrowserSurfaceConfig(
+        return copy(
                 mergedFrameRate,
                 true,
                 textSelectionAllowed,
                 zoomAllowed,
                 altF4CloseAllowed,
-                settingsCustomizer
+                settingsCustomizer,
+                frameScheduling,
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred
         );
     }
 
     public BrowserSurfaceConfig withMaxFpsOverride(int maxFps) {
         validateFrameRate(maxFps);
-        return new BrowserSurfaceConfig(
+        return copy(
                 maxFps,
                 true,
                 textSelectionAllowed,
                 zoomAllowed,
                 altF4CloseAllowed,
-                settingsCustomizer
+                settingsCustomizer,
+                frameScheduling,
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred
         );
     }
 
     public BrowserSurfaceConfig withTextSelectionAllowed(boolean allowed) {
-        return new BrowserSurfaceConfig(
+        return copy(
                 windowlessFrameRate,
                 windowlessFrameRateExplicit,
                 allowed,
                 zoomAllowed,
                 altF4CloseAllowed,
-                settingsCustomizer
+                settingsCustomizer,
+                frameScheduling,
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred
         );
     }
 
     public BrowserSurfaceConfig withZoomAllowed(boolean allowed) {
-        return new BrowserSurfaceConfig(
+        return copy(
                 windowlessFrameRate,
                 windowlessFrameRateExplicit,
                 textSelectionAllowed,
                 allowed,
                 altF4CloseAllowed,
-                settingsCustomizer
+                settingsCustomizer,
+                frameScheduling,
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred
         );
     }
 
     public BrowserSurfaceConfig withAltF4CloseAllowed(boolean allowed) {
-        return new BrowserSurfaceConfig(
+        return copy(
                 windowlessFrameRate,
                 windowlessFrameRateExplicit,
                 textSelectionAllowed,
                 zoomAllowed,
                 allowed,
-                settingsCustomizer
+                settingsCustomizer,
+                frameScheduling,
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred
         );
     }
 
     public BrowserSurfaceConfig withSettingsCustomizer(Consumer<CefBrowserSettings> settingsCustomizer) {
         Consumer<CefBrowserSettings> nonNullCustomizer = Objects.requireNonNull(settingsCustomizer, SETTINGS_CUSTOMIZER);
-        return new BrowserSurfaceConfig(
+        return copy(
                 windowlessFrameRate,
                 windowlessFrameRateExplicit,
                 textSelectionAllowed,
                 zoomAllowed,
                 altF4CloseAllowed,
-                this.settingsCustomizer.andThen(nonNullCustomizer)
+                this.settingsCustomizer.andThen(nonNullCustomizer),
+                frameScheduling,
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred
+        );
+    }
+
+    public BrowserSurfaceConfig withFrameScheduling(BrowserSurfaceFrameScheduling frameScheduling) {
+        return copy(
+                windowlessFrameRate,
+                windowlessFrameRateExplicit,
+                textSelectionAllowed,
+                zoomAllowed,
+                altF4CloseAllowed,
+                settingsCustomizer,
+                Objects.requireNonNull(frameScheduling, "frameScheduling"),
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred
+        );
+    }
+
+    public BrowserSurfaceConfig withPerformanceMetrics(boolean enabled) {
+        return copy(
+                windowlessFrameRate,
+                windowlessFrameRateExplicit,
+                textSelectionAllowed,
+                zoomAllowed,
+                altF4CloseAllowed,
+                settingsCustomizer,
+                frameScheduling,
+                enabled,
+                acceleratedPaintPreferred
+        );
+    }
+
+    public BrowserSurfaceConfig withAcceleratedPaintPreference(boolean preferred) {
+        return copy(
+                windowlessFrameRate,
+                windowlessFrameRateExplicit,
+                textSelectionAllowed,
+                zoomAllowed,
+                altF4CloseAllowed,
+                settingsCustomizer,
+                frameScheduling,
+                performanceMetricsEnabled,
+                preferred
         );
     }
 
@@ -149,6 +223,18 @@ public final class BrowserSurfaceConfig {
         return altF4CloseAllowed;
     }
 
+    public BrowserSurfaceFrameScheduling frameScheduling() {
+        return frameScheduling;
+    }
+
+    public boolean performanceMetricsEnabled() {
+        return performanceMetricsEnabled;
+    }
+
+    public boolean acceleratedPaintPreferred() {
+        return acceleratedPaintPreferred;
+    }
+
     public CefBrowserSettings toCefBrowserSettings() {
         CefBrowserSettings cefBrowserSettings = new CefBrowserSettings();
         if (windowlessFrameRate != null) {
@@ -156,7 +242,35 @@ public final class BrowserSurfaceConfig {
         }
 
         settingsCustomizer.accept(cefBrowserSettings);
+        if (cefBrowserSettings.shared_texture_enabled) {
+            throw new IllegalArgumentException(BrowserSurfaceAccelerationStatus.SHARED_TEXTURE_UNAVAILABLE_REASON);
+        }
+        cefBrowserSettings.external_begin_frame_enabled = frameScheduling == BrowserSurfaceFrameScheduling.RENDER_DRIVEN;
         return cefBrowserSettings;
+    }
+
+    private static BrowserSurfaceConfig copy(
+            Integer windowlessFrameRate,
+            boolean windowlessFrameRateExplicit,
+            boolean textSelectionAllowed,
+            boolean zoomAllowed,
+            boolean altF4CloseAllowed,
+            Consumer<CefBrowserSettings> settingsCustomizer,
+            BrowserSurfaceFrameScheduling frameScheduling,
+            boolean performanceMetricsEnabled,
+            boolean acceleratedPaintPreferred
+    ) {
+        return new BrowserSurfaceConfig(
+                windowlessFrameRate,
+                windowlessFrameRateExplicit,
+                textSelectionAllowed,
+                zoomAllowed,
+                altF4CloseAllowed,
+                settingsCustomizer,
+                frameScheduling,
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred
+        );
     }
 
     public static final class Builder {
@@ -166,6 +280,9 @@ public final class BrowserSurfaceConfig {
         private boolean zoomAllowed = DEFAULT_ZOOM_ALLOWED;
         private boolean altF4CloseAllowed = DEFAULT_ALT_F4_CLOSE_ALLOWED;
         private Consumer<CefBrowserSettings> settingsCustomizer = NO_OP_SETTINGS_CUSTOMIZER;
+        private BrowserSurfaceFrameScheduling frameScheduling = BrowserSurfaceFrameScheduling.AUTOMATIC;
+        private boolean performanceMetricsEnabled;
+        private boolean acceleratedPaintPreferred;
 
         private Builder() {
         }
@@ -195,7 +312,24 @@ public final class BrowserSurfaceConfig {
         }
 
         public Builder settingsCustomizer(Consumer<CefBrowserSettings> settingsCustomizer) {
-            this.settingsCustomizer = this.settingsCustomizer.andThen(Objects.requireNonNull(settingsCustomizer, SETTINGS_CUSTOMIZER));
+            this.settingsCustomizer = this.settingsCustomizer.andThen(
+                    Objects.requireNonNull(settingsCustomizer, SETTINGS_CUSTOMIZER)
+            );
+            return this;
+        }
+
+        public Builder frameScheduling(BrowserSurfaceFrameScheduling frameScheduling) {
+            this.frameScheduling = Objects.requireNonNull(frameScheduling, "frameScheduling");
+            return this;
+        }
+
+        public Builder performanceMetrics(boolean enabled) {
+            this.performanceMetricsEnabled = enabled;
+            return this;
+        }
+
+        public Builder preferAcceleratedPaint(boolean preferred) {
+            this.acceleratedPaintPreferred = preferred;
             return this;
         }
 

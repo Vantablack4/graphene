@@ -16,6 +16,10 @@ import org.slf4j.LoggerFactory;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
 import tytoo.grapheneui.api.bridge.GrapheneBridgeSubscription;
+import tytoo.grapheneui.api.surface.BrowserSurfaceAccelerationStatus;
+import tytoo.grapheneui.api.surface.BrowserSurfaceConfig;
+import tytoo.grapheneui.api.surface.BrowserSurfaceFrameScheduling;
+import tytoo.grapheneui.api.surface.BrowserSurfacePerformanceSnapshot;
 import tytoo.grapheneui.api.widget.GrapheneWebViewWidget;
 import tytoo.grapheneuidebug.GrapheneDebugClient;
 import tytoo.grapheneuidebug.test.GrapheneDebugTestRunner;
@@ -36,6 +40,7 @@ public final class GrapheneBrowserDebugScreen extends Screen {
     private static final String DEBUG_SUM_CHANNEL = "debug:sum";
     private static final String DEBUG_DEVTOOLS_STATUS_CHANNEL = "debug:devtools-status";
     private static final String DEBUG_TESTS_RUN_CHANNEL = "debug:tests:run";
+    private static final String DEBUG_PERFORMANCE_SNAPSHOT_CHANNEL = "debug:performance:snapshot";
     private static final String DEBUG_JAVA_TO_JS_TRIGGER_CHANNEL = "debug:bridge:trigger-java-to-js";
     private static final String DEBUG_JAVA_TO_JS_EVENT_CHANNEL = "debug:bridge:java-event";
     private static final String DEBUG_JAVA_TO_JS_REQUEST_CHANNEL = "debug:bridge:java-request";
@@ -162,6 +167,44 @@ public final class GrapheneBrowserDebugScreen extends Screen {
                 });
     }
 
+    private String buildPerformanceSnapshot() {
+        JsonObject response = new JsonObject();
+        if (webViewWidget == null) {
+            response.addProperty("ok", false);
+            response.addProperty("error", "Web view is unavailable");
+            return response.toString();
+        }
+
+        BrowserSurfaceAccelerationStatus acceleration = webViewWidget.getSurface().accelerationStatus();
+        response.addProperty("sharedTextureRequested", acceleration.sharedTextureRequested());
+        response.addProperty("sharedTextureActive", acceleration.sharedTextureActive());
+        response.addProperty("activePath", acceleration.activePath());
+        response.addProperty("sharedTextureUnavailableReason", acceleration.sharedTextureUnavailableReason());
+
+        BrowserSurfacePerformanceSnapshot snapshot = webViewWidget.getSurface().performanceSnapshot().orElse(null);
+        if (snapshot == null) {
+            response.addProperty("ok", false);
+            response.addProperty("error", "Performance metrics are disabled for this surface");
+            return response.toString();
+        }
+
+        response.addProperty("ok", true);
+        response.addProperty("paintFrames", snapshot.paintFrames());
+        response.addProperty("fullFrameCopies", snapshot.fullFrameCopies());
+        response.addProperty("partialFrameCopies", snapshot.partialFrameCopies());
+        response.addProperty("capturedBytes", snapshot.capturedBytes());
+        response.addProperty("uploadedFrames", snapshot.uploadedFrames());
+        response.addProperty("fullFrameUploads", snapshot.fullFrameUploads());
+        response.addProperty("partialFrameUploads", snapshot.partialFrameUploads());
+        response.addProperty("uploadedBytes", snapshot.uploadedBytes());
+        response.addProperty("coalescedPaintFrames", snapshot.coalescedPaintFrames());
+        response.addProperty("dirtyHistoryFallbacks", snapshot.dirtyHistoryFallbacks());
+        response.addProperty("captureNanos", snapshot.captureNanos());
+        response.addProperty("uploadNanos", snapshot.uploadNanos());
+        response.addProperty("externalBeginFrames", snapshot.externalBeginFrames());
+        return response.toString();
+    }
+
     private void openRemoteDevTools() {
         int debugPort = GrapheneCore.runtime().getRemoteDebuggingPort();
         if (debugPort > 0) {
@@ -185,7 +228,20 @@ public final class GrapheneBrowserDebugScreen extends Screen {
         int webViewHeight = height - webViewY - 8;
 
         if (webViewWidget == null) {
-            webViewWidget = new GrapheneWebViewWidget(this, 8, webViewY, webViewWidth, webViewHeight, Component.empty(), initialUrl);
+            BrowserSurfaceConfig surfaceConfig = BrowserSurfaceConfig.builder()
+                    .frameScheduling(BrowserSurfaceFrameScheduling.RENDER_DRIVEN)
+                    .performanceMetrics(true)
+                    .build();
+            webViewWidget = new GrapheneWebViewWidget(
+                    this,
+                    8,
+                    webViewY,
+                    webViewWidth,
+                    webViewHeight,
+                    Component.empty(),
+                    initialUrl,
+                    surfaceConfig
+            );
         } else {
             webViewWidget.setPosition(8, webViewY);
             webViewWidget.setSize(webViewWidth, webViewHeight);
@@ -281,6 +337,9 @@ public final class GrapheneBrowserDebugScreen extends Screen {
         ));
         bridgeSubscriptions.add(bridge.onRequest(DEBUG_TESTS_RUN_CHANNEL, (ignoredChannel, ignoredPayloadJson) ->
                 GrapheneDebugTestRunner.runAllTestsAsJson()
+        ));
+        bridgeSubscriptions.add(bridge.onRequest(DEBUG_PERFORMANCE_SNAPSHOT_CHANNEL, (ignoredChannel, ignoredPayloadJson) ->
+                CompletableFuture.completedFuture(buildPerformanceSnapshot())
         ));
         bridgeSubscriptions.add(bridge.onRequest(DEBUG_JAVA_TO_JS_TRIGGER_CHANNEL, (ignoredChannel, payloadJson) ->
                 runJavaToJsRoundTrip(payloadJson)
