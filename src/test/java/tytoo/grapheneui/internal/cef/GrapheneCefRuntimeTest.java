@@ -8,11 +8,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 final class GrapheneCefRuntimeTest {
     @Test
     void macShutdownSkipsExplicitCefAppDisposal() {
-        assertFalse(GrapheneCefRuntime.shouldDisposeCefAppExplicitly(true));
+        assertFalse(GrapheneCefRuntime.shouldDisposeCefAppExplicitly(true, false));
     }
 
     @Test
-    void nonMacShutdownDisposesCefAppExplicitly() {
-        assertTrue(GrapheneCefRuntime.shouldDisposeCefAppExplicitly(false));
+    void linuxShutdownSkipsExplicitCefAppDisposal() {
+        assertFalse(GrapheneCefRuntime.shouldDisposeCefAppExplicitly(false, true));
+    }
+
+    @Test
+    void windowsShutdownDisposesCefAppExplicitly() {
+        assertTrue(GrapheneCefRuntime.shouldDisposeCefAppExplicitly(false, false));
     }
 }
