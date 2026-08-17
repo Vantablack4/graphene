@@ -52,7 +52,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
     private final GrapheneBrowserSurfaceManager surfaceManager;
     private final GrapheneLoadEventBus loadEventBus = new GrapheneLoadEventBus();
     private final GrapheneBridgeRuntime bridgeRuntime;
-    private boolean initialized;
+    private volatile boolean initialized;
     private boolean shutdownInProgress;
     private boolean shutdownHookRegistered;
     private CefApp cefApp;
@@ -225,9 +225,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
 
     @Override
     public boolean isInitialized() {
-        synchronized (lock) {
-            return initialized;
-        }
+        return initialized;
     }
 
     public void shutdown() {
