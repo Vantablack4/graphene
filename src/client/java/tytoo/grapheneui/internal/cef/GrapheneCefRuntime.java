@@ -515,8 +515,10 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
 
     private void disposeNativeResources(ShutdownResources resources) {
         CefClient activeClient = resources.cefClient();
-        if (activeClient != null) {
+        if (activeClient != null && shouldDisposeCefClientExplicitly(GraphenePlatform.isLinux())) {
             runShutdownStep(activeClient::dispose, "Failed to dispose CEF client");
+        } else if (activeClient != null) {
+            LOGGER.info("Skipping explicit CEF client disposal on Linux; process teardown will release native resources");
         }
 
         CefApp activeApp = resources.cefApp();
@@ -547,6 +549,10 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
 
     static boolean shouldDisposeCefAppExplicitly(boolean mac, boolean linux) {
         return !mac && !linux;
+    }
+
+    static boolean shouldDisposeCefClientExplicitly(boolean linux) {
+        return !linux;
     }
 
     private void runShutdownStep(Runnable action, String failureMessage) {
