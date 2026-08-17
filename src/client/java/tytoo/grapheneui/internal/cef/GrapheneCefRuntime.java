@@ -536,8 +536,8 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
     }
 
     private void disposeCefApp(CefApp activeApp) {
-        if (!shouldDisposeCefAppExplicitly(GraphenePlatform.isMac())) {
-            LOGGER.info("Skipping explicit CEF app disposal on macOS; process teardown will release native resources");
+        if (!shouldDisposeCefAppExplicitly(GraphenePlatform.isMac(), GraphenePlatform.isLinux())) {
+            LOGGER.info("Skipping explicit CEF app disposal on this platform; process teardown will release native resources");
             return;
         }
 
@@ -545,8 +545,8 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
         awaitCefTermination();
     }
 
-    static boolean shouldDisposeCefAppExplicitly(boolean mac) {
-        return !mac;
+    static boolean shouldDisposeCefAppExplicitly(boolean mac, boolean linux) {
+        return !mac && !linux;
     }
 
     private void runShutdownStep(Runnable action, String failureMessage) {
