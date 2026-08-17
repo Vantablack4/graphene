@@ -29,6 +29,9 @@ public final class GrapheneHttpServerRuntime implements GrapheneHttpServer, Auto
     private static final String ALLOW_METHODS = "GET, HEAD, POST";
     private static final String HEADER_CONTENT_TYPE = "Content-Type";
     private static final String HEADER_ALLOW = "Allow";
+    private static final String HEADER_ACCEPT_RANGES = "Accept-Ranges";
+    private static final String HEADER_CONTENT_RANGE = "Content-Range";
+    private static final String HEADER_RANGE = "Range";
     private static final String CONTENT_TYPE_TEXT_PLAIN = "text/plain";
     private static final byte[] EMPTY_BYTES = new byte[0];
     private static final GrapheneHttpServerRuntime DISABLED = new GrapheneHttpServerRuntime("", -1, "", null, false);
@@ -310,9 +313,33 @@ public final class GrapheneHttpServerRuntime implements GrapheneHttpServer, Auto
             return normalizedPath;
         }
 
-        private static void send(HttpExchange exchange, int statusCode, String contentType, byte[] payload, boolean headRequest) throws IOException {
+        private static void send(
+                HttpExchange exchange,
+                int statusCode,
+                String contentType,
+                byte[] payload,
+                boolean headRequest
+        ) throws IOException {
+            send(exchange, statusCode, contentType, payload, headRequest, null, false);
+        }
+
+        private static void send(
+                HttpExchange exchange,
+                int statusCode,
+                String contentType,
+                byte[] payload,
+                boolean headRequest,
+                String contentRange,
+                boolean acceptsRanges
+        ) throws IOException {
             Headers responseHeaders = exchange.getResponseHeaders();
             responseHeaders.set(HEADER_CONTENT_TYPE, contentType == null ? CONTENT_TYPE_TEXT_PLAIN : contentType);
+            if (acceptsRanges) {
+                responseHeaders.set(HEADER_ACCEPT_RANGES, "bytes");
+            }
+            if (contentRange != null) {
+                responseHeaders.set(HEADER_CONTENT_RANGE, contentRange);
+            }
 
             byte[] responsePayload = payload == null ? EMPTY_BYTES : payload;
             if (headRequest) {
@@ -353,11 +380,119 @@ public final class GrapheneHttpServerRuntime implements GrapheneHttpServer, Auto
                 }
 
                 ResourceResponse response = loadResourceResponse(requestPath, true);
-                send(exchange, response.statusCode(), response.contentType(), response.payload(), isHeadRequest);
+                RangeResponse rangeResponse = applyRange(
+                        response,
+                        exchange.getRequestHeaders().getFirst(HEADER_RANGE),
+                        isGetRequest || isHeadRequest
+                );
+                send(
+                        exchange,
+                        rangeResponse.statusCode(),
+                        rangeResponse.contentType(),
+                        rangeResponse.payload(),
+                        isHeadRequest,
+                        rangeResponse.contentRange(),
+                        rangeResponse.acceptsRanges()
+                );
             }
         }
 
+        private static RangeResponse applyRange(ResourceResponse response, String rangeHeader, boolean rangeEligible) {
+            boolean successfulAsset = response.statusCode() == 200;
+            if (!rangeEligible || !successfulAsset || rangeHeader == null || rangeHeader.isBlank()) {
+                return RangeResponse.full(response, rangeEligible && successfulAsset);
+            }
+
+            byte[] payload = response.payload();
+            ByteRange byteRange = ByteRange.parse(rangeHeader, payload.length);
+            if (byteRange == null) {
+                return new RangeResponse(
+                        416,
+                        response.contentType(),
+                        EMPTY_BYTES,
+                        "bytes */" + payload.length,
+                        true
+                );
+            }
+
+            byte[] partialPayload = Arrays.copyOfRange(payload, byteRange.start(), byteRange.endInclusive() + 1);
+            return new RangeResponse(
+                    206,
+                    response.contentType(),
+                    partialPayload,
+                    "bytes " + byteRange.start() + "-" + byteRange.endInclusive() + "/" + payload.length,
+                    true
+            );
+        }
+
         protected abstract ResourceResponse loadResourceResponse(String requestPath, boolean allowSpaFallback);
+    }
+
+    private record RangeResponse(
+            int statusCode,
+            String contentType,
+            byte[] payload,
+            String contentRange,
+            boolean acceptsRanges
+    ) {
+        private static RangeResponse full(ResourceResponse response, boolean acceptsRanges) {
+            return new RangeResponse(
+                    response.statusCode(),
+                    response.contentType(),
+                    response.payload(),
+                    null,
+                    acceptsRanges
+            );
+        }
+    }
+
+    private record ByteRange(int start, int endInclusive) {
+        private static ByteRange parse(String header, int payloadLength) {
+            if (payloadLength <= 0 || header == null || !header.regionMatches(true, 0, "bytes=", 0, "bytes=".length())) {
+                return null;
+            }
+
+            String value = header.substring("bytes=".length()).trim();
+            if (value.isBlank() || value.contains(",")) {
+                return null;
+            }
+
+            int delimiter = value.indexOf('-');
+            if (delimiter < 0 || delimiter != value.lastIndexOf('-')) {
+                return null;
+            }
+
+            try {
+                String startValue = value.substring(0, delimiter).trim();
+                String endValue = value.substring(delimiter + 1).trim();
+                if (startValue.isBlank()) {
+                    long suffixLength = Long.parseLong(endValue);
+                    if (suffixLength <= 0) {
+                        return null;
+                    }
+                    int selectedLength = (int) Math.min(suffixLength, payloadLength);
+                    return new ByteRange(payloadLength - selectedLength, payloadLength - 1);
+                }
+
+                long requestedStart = Long.parseLong(startValue);
+                if (requestedStart < 0 || requestedStart >= payloadLength) {
+                    return null;
+                }
+
+                long requestedEnd = endValue.isBlank()
+                        ? payloadLength - 1L
+                        : Long.parseLong(endValue);
+                if (requestedEnd < requestedStart) {
+                    return null;
+                }
+
+                int start = (int) requestedStart;
+                int endInclusive = (int) Math.min(requestedEnd, payloadLength - 1L);
+                return new ByteRange(start, endInclusive);
+            } catch (NumberFormatException exception) {
+                return null;
+            }
+        }
     }
 
     private static final class RoutingHttpHandler extends AbstractGrapheneHttpHandler {

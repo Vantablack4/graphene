@@ -19,6 +19,8 @@ public final class GrapheneMimeTypes {
             new MimeTypeRule(".jpeg", "image/jpeg"),
             new MimeTypeRule(".gif", "image/gif"),
             new MimeTypeRule(".webp", "image/webp"),
+            new MimeTypeRule(".webm", "video/webm"),
+            new MimeTypeRule(".mp4", "video/mp4"),
             new MimeTypeRule(".ico", "image/x-icon"),
             new MimeTypeRule(".svg", "image/svg+xml"),
             new MimeTypeRule(".woff", "font/woff"),

@@ -27,6 +27,12 @@ final class GrapheneMimeTypesTest {
     }
 
     @Test
+    void resolvesBrowserVideoMimeTypes() {
+        assertEquals("video/webm", GrapheneMimeTypes.resolve("assets/my-mod-id/video/menu.WEBM"));
+        assertEquals("video/mp4", GrapheneMimeTypes.resolve("assets/my-mod-id/video/menu.mp4"));
+    }
+
+    @Test
     void fallsBackToTextPlainForUnknownExtension() {
         String mimeType = GrapheneMimeTypes.resolve("assets/my-mod-id/web/custom.unknown");
 

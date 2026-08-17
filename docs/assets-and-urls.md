@@ -83,7 +83,7 @@ Example:
 
 ## MIME Types
 
-Graphene resolves common MIME types for HTML, CSS, JS, JSON, images, fonts, and WASM.
+Graphene resolves common MIME types for HTML, CSS, JS, JSON, images, WebM/MP4 video, fonts, and WASM.
 Unknown extensions default to `text/plain`.
 
 ## HTTP Mode
@@ -119,6 +119,8 @@ Important behavior:
   1. filesystem (`fileRoot/request-path`)
   2. classpath fallback under `assets/<mod-id>/<request-path>`
   3. optional SPA fallback
+- Successful HTTP assets advertise byte-range support. Single `bytes=` ranges return `206 Partial Content`, which lets
+  Chromium seek and stream bundled media without downloading the whole file first.
 
 ## Recommendations
 
