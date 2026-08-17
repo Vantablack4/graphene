@@ -208,6 +208,7 @@ Fix:
 
 - Ensure widgets/surfaces are closed cleanly.
 - Reduce long-running page tasks during shutdown.
+- Keep Graphene's explicit CEF application disposal enabled on every platform, including macOS.
 - Capture logs and reproduce with minimal UI.
 
 ---

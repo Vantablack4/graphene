@@ -536,17 +536,10 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
     }
 
     private void disposeCefApp(CefApp activeApp) {
-        if (!shouldDisposeCefAppExplicitly(GraphenePlatform.isMac())) {
-            LOGGER.info("Skipping explicit CEF app disposal on macOS; process teardown will release native resources");
-            return;
-        }
-
+        // CEF requires an explicit app shutdown on every platform. Letting macOS process
+        // teardown own this leaves helper processes attached and trips native assertions.
         activeApp.dispose();
         awaitCefTermination();
-    }
-
-    static boolean shouldDisposeCefAppExplicitly(boolean mac) {
-        return !mac;
     }
 
     private void runShutdownStep(Runnable action, String failureMessage) {
