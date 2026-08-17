@@ -8,6 +8,7 @@ import tytoo.grapheneui.api.config.GrapheneHttpConfig;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -29,13 +30,20 @@ final class GrapheneHttpServerRuntimeTest {
     Path tempDir;
 
     private static TestHttpResponse sendRequest(String method, String url) throws IOException {
-        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+        return sendRequest(method, url, Map.of());
+    }
+
+    private static TestHttpResponse sendRequest(String method, String url, Map<String, String> headers) throws IOException {
+        HttpRequest.Builder requestBuilder = HttpRequest.newBuilder(URI.create(url))
                 .method(method, HttpRequest.BodyPublishers.noBody())
-                .timeout(REQUEST_TIMEOUT)
-                .build();
+                .timeout(REQUEST_TIMEOUT);
+        headers.forEach(requestBuilder::header);
         try {
-            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-            return new TestHttpResponse(response.statusCode(), response.body());
+            HttpResponse<String> response = HTTP_CLIENT.send(
+                    requestBuilder.build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+            );
+            return new TestHttpResponse(response.statusCode(), response.body(), response.headers());
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted while performing HTTP request", exception);
@@ -80,6 +88,77 @@ final class GrapheneHttpServerRuntimeTest {
 
             assertEquals(200, response.statusCode());
             assertEquals(scriptBody, response.body());
+        }
+    }
+
+    @Test
+    void servesSingleByteRangeForMountedMedia() throws IOException {
+        Path videoPath = tempDir.resolve("web/menu.webm");
+        Files.createDirectories(videoPath.getParent());
+        Files.writeString(videoPath, "0123456789", StandardCharsets.UTF_8);
+
+        GrapheneHttpConfig config = GrapheneHttpConfig.builder()
+                .randomPortInRange(30_000, 60_000)
+                .fileRoot(tempDir)
+                .build();
+
+        try (GrapheneHttpServerRuntime server = GrapheneHttpServerRuntime.start(Map.of("my-mod-id", config))) {
+            TestHttpResponse response = sendRequest(
+                    "GET",
+                    server.baseUrl() + "/mods/my-mod-id/web/menu.webm",
+                    Map.of("Range", "bytes=2-5")
+            );
+
+            assertEquals(206, response.statusCode());
+            assertEquals("2345", response.body());
+            assertEquals("video/webm", response.header("Content-Type"));
+            assertEquals("bytes", response.header("Accept-Ranges"));
+            assertEquals("bytes 2-5/10", response.header("Content-Range"));
+        }
+    }
+
+    @Test
+    void supportsOpenAndSuffixByteRanges() throws IOException {
+        Path videoPath = tempDir.resolve("web/menu.mp4");
+        Files.createDirectories(videoPath.getParent());
+        Files.writeString(videoPath, "0123456789", StandardCharsets.UTF_8);
+
+        GrapheneHttpConfig config = GrapheneHttpConfig.builder()
+                .randomPortInRange(30_000, 60_000)
+                .fileRoot(tempDir)
+                .build();
+
+        try (GrapheneHttpServerRuntime server = GrapheneHttpServerRuntime.start(Map.of("my-mod-id", config))) {
+            String url = server.baseUrl() + "/mods/my-mod-id/web/menu.mp4";
+            TestHttpResponse openRange = sendRequest("GET", url, Map.of("Range", "bytes=7-"));
+            TestHttpResponse suffixRange = sendRequest("GET", url, Map.of("Range", "bytes=-3"));
+
+            assertEquals(206, openRange.statusCode());
+            assertEquals("789", openRange.body());
+            assertEquals(206, suffixRange.statusCode());
+            assertEquals("789", suffixRange.body());
+        }
+    }
+
+    @Test
+    void rejectsUnsatisfiableAndMultipleRanges() throws IOException {
+        Path videoPath = tempDir.resolve("web/menu.webm");
+        Files.createDirectories(videoPath.getParent());
+        Files.writeString(videoPath, "0123456789", StandardCharsets.UTF_8);
+
+        GrapheneHttpConfig config = GrapheneHttpConfig.builder()
+                .randomPortInRange(30_000, 60_000)
+                .fileRoot(tempDir)
+                .build();
+
+        try (GrapheneHttpServerRuntime server = GrapheneHttpServerRuntime.start(Map.of("my-mod-id", config))) {
+            String url = server.baseUrl() + "/mods/my-mod-id/web/menu.webm";
+            TestHttpResponse beyondEnd = sendRequest("GET", url, Map.of("Range", "bytes=10-12"));
+            TestHttpResponse multiple = sendRequest("GET", url, Map.of("Range", "bytes=0-1,4-5"));
+
+            assertEquals(416, beyondEnd.statusCode());
+            assertEquals("bytes */10", beyondEnd.header("Content-Range"));
+            assertEquals(416, multiple.statusCode());
         }
     }
 
@@ -291,6 +370,9 @@ final class GrapheneHttpServerRuntimeTest {
         }
     }
 
-    private record TestHttpResponse(int statusCode, String body) {
+    private record TestHttpResponse(int statusCode, String body, HttpHeaders headers) {
+        private String header(String name) {
+            return headers.firstValue(name).orElse("");
+        }
     }
 }
