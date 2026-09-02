@@ -1,11 +1,17 @@
-# Build the project on demand via manual workflow dispatch.
+# Build the project on every push to main and pull request, or on demand.
+# The release jar is uploaded as `graphene-ui-jar` so mc-serverpack can
+# publish it to R2 at release time (./mcw release graphene-ui); this
+# repository holds no publishing secrets.
 
 name: build
 on:
   workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
 
 jobs:
-  build:
+  verify:
     runs-on: ubuntu-24.04
     steps:
       - name: checkout repository
@@ -19,6 +25,16 @@ jobs:
           distribution: 'microsoft'
       - name: make gradle wrapper executable
         run: chmod +x ./gradlew
+      - name: resolve release jar
+        id: version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mod_version="$(awk -F= '$1 == "mod_version" {print $2; exit}' gradle.properties | tr -d '[:space:]')"
+          archives_base_name="$(awk -F= '$1 == "archives_base_name" {print $2; exit}' gradle.properties | tr -d '[:space:]')"
+          [ -n "$mod_version" ] || { echo "mod_version missing from gradle.properties" >&2; exit 1; }
+          echo "version=$mod_version" >> "$GITHUB_OUTPUT"
+          echo "jar=build/libs/${archives_base_name:-graphene-ui}-$mod_version.jar" >> "$GITHUB_OUTPUT"
       - name: build
         run: ./gradlew build
       - name: capture build artifacts
@@ -26,3 +42,10 @@ jobs:
         with:
           name: Artifacts
           path: build/libs/
+      - name: upload release jar for mc-serverpack to publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphene-ui-jar
+          path: ${{ steps.version.outputs.jar }}
+          if-no-files-found: error
+          retention-days: 30
