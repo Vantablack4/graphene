@@ -67,6 +67,50 @@ surface.useAutoResolution();
 surface.setSurfaceSize(600, 340);
 ```
 
+## GUI-Scaled Pages
+
+By default one CSS pixel is one browser pixel, so a full-screen page ignores Minecraft's GUI Scale and looks tiny on
+large or high-DPI windows. Opt into surface CSS pixels to lay the page out in the surface's own units instead:
+
+```java
+BrowserSurfaceConfig config = BrowserSurfaceConfig.builder()
+        .cssPixelsPerSurfacePixel(2.0)
+        .build();
+
+GrapheneWebViewWidget webView = new GrapheneWebViewWidget(
+        this, 0, 0, width, height, Component.empty(), url, config);
+```
+
+For a widget sized in GUI pixels, one GUI pixel now spans two CSS pixels, so the page grows and shrinks with the
+player's GUI Scale while Chromium still renders at full window resolution. The smallest page a full-screen widget can
+see is 640x480 CSS pixels (Minecraft's 320x240 GUI minimum).
+
+Graphene applies this as CSS `zoom` on the page root after every load and size change. Root zoom does not reach media
+queries or viewport units, so responsive pages should query a full-size container:
+
+```css
+html, body { height: 100%; margin: 0; }
+body { container: page / size; }
+
+@container page (min-width: 800px) and (min-height: 600px) {
+  .panel { padding: 24px; }
+}
+
+html:not([data-graphene-surface]) .panel { visibility: hidden; }
+```
+
+Use container units (`cqw`, `cqh`) instead of `vw` and `vh`. Graphene also sets `data-graphene-surface="WxH"` and the
+`--graphene-surface-width` / `--graphene-surface-height` properties on the root, exposes
+`globalThis.grapheneSurface = {width, height, zoom}` and dispatches a `graphene:surface` event when they change.
+Under root zoom `getBoundingClientRect()` and `innerWidth` stay in browser pixels; native slots already account for
+this, and code that maps DOM rects itself should normalize by `innerWidth` and `innerHeight`.
+
+## Resizing
+
+Size changes reach Chromium from the render loop, one at a time: Graphene waits for the frame at the new size (and
+invalidates until it arrives) before applying the next one. Chromium holds an off-screen resize until such a frame is
+painted, so resizing again earlier could leave the surface showing a cropped copy of the old frame.
+
 ## ViewBox Cropping
 
 ```java
