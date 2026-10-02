@@ -44,6 +44,13 @@ final class GraphenePaintBuffer {
         }
     }
 
+    MainFrameInfo latestMainFrameInfo() {
+        synchronized (mainFrameData) {
+            FrameSlot latestSlot = mainFrameData.latestSlot();
+            return latestSlot == null ? null : new MainFrameInfo(latestSlot.width, latestSlot.height, latestSlot.frameVersion);
+        }
+    }
+
     void onPopupClosed() {
         synchronized (popupFrameData) {
             popupFrameData.popupVisible = false;
@@ -496,5 +503,8 @@ final class GraphenePaintBuffer {
             ByteBuffer targetBuffer,
             GrapheneDirtyRegion damageToCopy
     ) {
+    }
+
+    record MainFrameInfo(int width, int height, long version) {
     }
 }

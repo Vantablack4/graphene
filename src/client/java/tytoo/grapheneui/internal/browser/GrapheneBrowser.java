@@ -30,6 +30,9 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHandler, AutoCloseable {
+    private static final long RESIZE_RECOVERY_INTERVAL_NANOS = 100_000_000L;
+    private static final long RESIZE_HOLD_TIMEOUT_NANOS = 2_000_000_000L;
+
     private final GrapheneBrowserGpuRenderer renderer;
     private final GrapheneBrowserPerformanceMetrics performanceMetrics;
     private final BrowserSurfaceFrameScheduling frameScheduling;
@@ -41,6 +44,13 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     private final Rectangle browserRect = new Rectangle(0, 0, 1, 1);
     private final Point screenPoint = new Point(0, 0);
     private volatile int cursorType = Cursor.DEFAULT_CURSOR;
+    private boolean resizeInFlight;
+    private long inFlightBaseVersion;
+    private long inFlightSinceNanos;
+    private long lastResizeRecoveryNanos;
+    private int requestedWidth;
+    private int requestedHeight;
+    private boolean resizeRequested;
     private CefDragData activeDragData;
     private int activeDragMask = CefDragData.DragOperations.DRAG_OPERATION_NONE;
     private boolean dragTargetEntered;
@@ -317,6 +327,7 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
             int sourceHeight
     ) {
         requestRenderDrivenFrame();
+        syncRequestedSize();
         renderer.render(
                 graphics,
                 paintBuffer.snapshot(renderer.mainUploadedVersion(), renderer.popupUploadedVersion()),
@@ -338,6 +349,7 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
             int sourceHeight
     ) {
         requestRenderDrivenFrame();
+        syncRequestedSize();
         return renderer.prepareMainFrameTexture(
                 paintBuffer.snapshot(renderer.mainUploadedVersion(), renderer.popupUploadedVersion()),
                 sourceX,
@@ -348,8 +360,9 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     }
 
     public void wasResizedTo(int width, int height) {
-        browserRect.setBounds(0, 0, width, height);
-        super.wasResized(width, height);
+        requestedWidth = width;
+        requestedHeight = height;
+        resizeRequested = true;
     }
 
     public void mouseMoved(int x, int y, int modifiers) {
@@ -484,6 +497,48 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
 
     private void setNativeFocus(boolean enable) {
         super.setFocus(enable);
+    }
+
+    private void syncRequestedSize() {
+        if (closed || (resizeInFlight && !resizeFrameArrived()) || !resizeRequested) {
+            return;
+        }
+
+        resizeRequested = false;
+        if (browserRect.width == requestedWidth && browserRect.height == requestedHeight) {
+            return;
+        }
+
+        browserRect.setBounds(0, 0, requestedWidth, requestedHeight);
+        GraphenePaintBuffer.MainFrameInfo latestFrame = paintBuffer.latestMainFrameInfo();
+        inFlightBaseVersion = latestFrame == null ? -1L : latestFrame.version();
+        resizeInFlight = true;
+        inFlightSinceNanos = System.nanoTime();
+        lastResizeRecoveryNanos = inFlightSinceNanos;
+        super.wasResized(requestedWidth, requestedHeight);
+    }
+
+    private boolean resizeFrameArrived() {
+        GraphenePaintBuffer.MainFrameInfo latestFrame = paintBuffer.latestMainFrameInfo();
+        if (latestFrame != null
+                && latestFrame.version() > inFlightBaseVersion
+                && latestFrame.width() == browserRect.width
+                && latestFrame.height() == browserRect.height) {
+            resizeInFlight = false;
+            return true;
+        }
+
+        long now = System.nanoTime();
+        if (now - inFlightSinceNanos >= RESIZE_HOLD_TIMEOUT_NANOS) {
+            resizeInFlight = false;
+            return true;
+        }
+
+        if (now - lastResizeRecoveryNanos >= RESIZE_RECOVERY_INTERVAL_NANOS) {
+            lastResizeRecoveryNanos = now;
+            invalidate();
+        }
+        return false;
     }
 
     private void requestRenderDrivenFrame() {
