@@ -6,11 +6,11 @@ public final class BrowserSurfaceSizingState {
     private static final int MIN_SIZE = 1;
 
     private final Rectangle viewBox = new Rectangle(0, 0, MIN_SIZE, MIN_SIZE);
+    private final boolean integerPixelScale;
     private int surfaceWidth;
     private int surfaceHeight;
     private int resolutionWidth;
     private int resolutionHeight;
-    private final boolean integerPixelScale;
     private boolean autoResolution;
     private boolean customViewBox;
 
