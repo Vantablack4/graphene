@@ -53,6 +53,7 @@ public final class BrowserSurface implements AutoCloseable {
     private final GrapheneCoreServices services;
     private final BrowserSurfaceConfig config;
     private final BrowserSurfaceAccelerationStatus accelerationStatus;
+    private BrowserSurfaceSizingState.CssViewport appliedCssViewport;
     private boolean closed;
 
     private BrowserSurface(Builder builder) {
@@ -65,7 +66,8 @@ public final class BrowserSurface implements AutoCloseable {
                 builder.resolutionHeight,
                 builder.viewBox,
                 McWindowScale.getScaleX(),
-                McWindowScale.getScaleY()
+                McWindowScale.getScaleY(),
+                builder.config != null && builder.config.usesSurfaceCssPixels()
         );
 
         GrapheneCore.runtime();
@@ -100,6 +102,10 @@ public final class BrowserSurface implements AutoCloseable {
             public void onLoadEnd(CefBrowser browser, CefFrame frame, int httpStatusCode) {
                 if (!config.allowsTextSelection()) {
                     GraphenePageDefaults.disableTextSelection(browser, frame);
+                }
+                if (frame == null || frame.isMain()) {
+                    appliedCssViewport = null;
+                    applySurfaceCssPixels();
                 }
             }
         });
@@ -327,11 +333,26 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     private void applyResizeInstruction(BrowserSurfaceSizingState.ResizeInstruction resizeInstruction) {
+        applySurfaceCssPixels();
         if (!resizeInstruction.shouldResizeBrowser()) {
             return;
         }
 
         browser.wasResizedTo(resizeInstruction.width(), resizeInstruction.height());
+    }
+
+    private void applySurfaceCssPixels() {
+        if (!config.usesSurfaceCssPixels() || closed) {
+            return;
+        }
+
+        BrowserSurfaceSizingState.CssViewport viewport = sizingState.cssViewport(config.cssPixelsPerSurfacePixel());
+        if (viewport.equals(appliedCssViewport)) {
+            return;
+        }
+
+        appliedCssViewport = viewport;
+        GraphenePageDefaults.applySurfaceCssPixels(browser, viewport.width(), viewport.height(), viewport.zoom());
     }
 
     private void pushBootstrap(ProfilerFiller profiler) {
@@ -524,6 +545,11 @@ public final class BrowserSurface implements AutoCloseable {
 
         public Builder performanceMetrics(boolean enabled) {
             this.config = this.config.withPerformanceMetrics(enabled);
+            return this;
+        }
+
+        public Builder cssPixelsPerSurfacePixel(double ratio) {
+            this.config = this.config.withCssPixelsPerSurfacePixel(ratio);
             return this;
         }
 

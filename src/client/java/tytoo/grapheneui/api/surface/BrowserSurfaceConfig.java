@@ -28,6 +28,7 @@ public final class BrowserSurfaceConfig {
     private final BrowserSurfaceFrameScheduling frameScheduling;
     private final boolean performanceMetricsEnabled;
     private final boolean acceleratedPaintPreferred;
+    private final double cssPixelsPerSurfacePixel;
 
     private BrowserSurfaceConfig(Builder builder) {
         this(
@@ -39,7 +40,8 @@ public final class BrowserSurfaceConfig {
                 builder.settingsCustomizer,
                 builder.frameScheduling,
                 builder.performanceMetricsEnabled,
-                builder.acceleratedPaintPreferred
+                builder.acceleratedPaintPreferred,
+                builder.cssPixelsPerSurfacePixel
         );
     }
 
@@ -52,7 +54,8 @@ public final class BrowserSurfaceConfig {
             Consumer<CefBrowserSettings> settingsCustomizer,
             BrowserSurfaceFrameScheduling frameScheduling,
             boolean performanceMetricsEnabled,
-            boolean acceleratedPaintPreferred
+            boolean acceleratedPaintPreferred,
+            double cssPixelsPerSurfacePixel
     ) {
         this.windowlessFrameRate = windowlessFrameRate;
         this.windowlessFrameRateExplicit = windowlessFrameRateExplicit;
@@ -63,6 +66,7 @@ public final class BrowserSurfaceConfig {
         this.frameScheduling = Objects.requireNonNull(frameScheduling, "frameScheduling");
         this.performanceMetricsEnabled = performanceMetricsEnabled;
         this.acceleratedPaintPreferred = acceleratedPaintPreferred;
+        this.cssPixelsPerSurfacePixel = cssPixelsPerSurfacePixel;
     }
 
     public static BrowserSurfaceConfig defaults() {
@@ -79,6 +83,14 @@ public final class BrowserSurfaceConfig {
         }
     }
 
+    private static double validateCssPixelRatio(double ratio) {
+        if (!Double.isFinite(ratio) || ratio < 0.0) {
+            throw new IllegalArgumentException("cssPixelsPerSurfacePixel must be finite and >= 0");
+        }
+
+        return ratio;
+    }
+
     public BrowserSurfaceConfig withMaxFps(int maxFps) {
         validateFrameRate(maxFps);
         int mergedFrameRate = windowlessFrameRateExplicit
@@ -93,7 +105,8 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 frameScheduling,
                 performanceMetricsEnabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -108,7 +121,8 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 frameScheduling,
                 performanceMetricsEnabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -122,7 +136,8 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 frameScheduling,
                 performanceMetricsEnabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -136,7 +151,8 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 frameScheduling,
                 performanceMetricsEnabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -150,7 +166,8 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 frameScheduling,
                 performanceMetricsEnabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -165,7 +182,8 @@ public final class BrowserSurfaceConfig {
                 this.settingsCustomizer.andThen(nonNullCustomizer),
                 frameScheduling,
                 performanceMetricsEnabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -179,7 +197,8 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 Objects.requireNonNull(frameScheduling, "frameScheduling"),
                 performanceMetricsEnabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -193,7 +212,8 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 frameScheduling,
                 enabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -207,7 +227,35 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 frameScheduling,
                 performanceMetricsEnabled,
-                preferred
+                preferred,
+                cssPixelsPerSurfacePixel
+        );
+    }
+
+    /**
+     * Lays the page out in surface pixels instead of browser pixels.
+     * <p>
+     * When positive, Graphene zooms the page root so one surface pixel spans {@code ratio} CSS pixels while the
+     * browser keeps rendering at full window resolution. For a widget sized in Minecraft GUI pixels, {@code 1.0}
+     * makes one CSS pixel one GUI pixel and {@code 2.0} matches a 2x pixel-art design grid, so the page follows the
+     * player's GUI Scale. Root zoom does not affect media queries or viewport units, so responsive pages should
+     * query a full-size container ({@code container-type: size}) and use container units instead. Graphene marks
+     * the root with {@code data-graphene-surface}, sets {@code --graphene-surface-width} and
+     * {@code --graphene-surface-height}, exposes {@code globalThis.grapheneSurface} and dispatches a
+     * {@code graphene:surface} event whenever the surface changes. Zero keeps one CSS pixel per browser pixel.
+     */
+    public BrowserSurfaceConfig withCssPixelsPerSurfacePixel(double ratio) {
+        return copy(
+                windowlessFrameRate,
+                windowlessFrameRateExplicit,
+                textSelectionAllowed,
+                zoomAllowed,
+                altF4CloseAllowed,
+                settingsCustomizer,
+                frameScheduling,
+                performanceMetricsEnabled,
+                acceleratedPaintPreferred,
+                validateCssPixelRatio(ratio)
         );
     }
 
@@ -235,6 +283,14 @@ public final class BrowserSurfaceConfig {
         return acceleratedPaintPreferred;
     }
 
+    public double cssPixelsPerSurfacePixel() {
+        return cssPixelsPerSurfacePixel;
+    }
+
+    public boolean usesSurfaceCssPixels() {
+        return cssPixelsPerSurfacePixel > 0.0;
+    }
+
     public CefBrowserSettings toCefBrowserSettings() {
         CefBrowserSettings cefBrowserSettings = new CefBrowserSettings();
         if (windowlessFrameRate != null) {
@@ -258,7 +314,8 @@ public final class BrowserSurfaceConfig {
             Consumer<CefBrowserSettings> settingsCustomizer,
             BrowserSurfaceFrameScheduling frameScheduling,
             boolean performanceMetricsEnabled,
-            boolean acceleratedPaintPreferred
+            boolean acceleratedPaintPreferred,
+            double cssPixelsPerSurfacePixel
     ) {
         return new BrowserSurfaceConfig(
                 windowlessFrameRate,
@@ -269,7 +326,8 @@ public final class BrowserSurfaceConfig {
                 settingsCustomizer,
                 frameScheduling,
                 performanceMetricsEnabled,
-                acceleratedPaintPreferred
+                acceleratedPaintPreferred,
+                cssPixelsPerSurfacePixel
         );
     }
 
@@ -283,6 +341,7 @@ public final class BrowserSurfaceConfig {
         private BrowserSurfaceFrameScheduling frameScheduling = BrowserSurfaceFrameScheduling.AUTOMATIC;
         private boolean performanceMetricsEnabled;
         private boolean acceleratedPaintPreferred;
+        private double cssPixelsPerSurfacePixel;
 
         private Builder() {
         }
@@ -330,6 +389,11 @@ public final class BrowserSurfaceConfig {
 
         public Builder preferAcceleratedPaint(boolean preferred) {
             this.acceleratedPaintPreferred = preferred;
+            return this;
+        }
+
+        public Builder cssPixelsPerSurfacePixel(double ratio) {
+            this.cssPixelsPerSurfacePixel = validateCssPixelRatio(ratio);
             return this;
         }
 

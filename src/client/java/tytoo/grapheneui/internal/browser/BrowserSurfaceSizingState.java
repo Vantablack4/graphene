@@ -10,6 +10,7 @@ public final class BrowserSurfaceSizingState {
     private int surfaceHeight;
     private int resolutionWidth;
     private int resolutionHeight;
+    private final boolean integerPixelScale;
     private boolean autoResolution;
     private boolean customViewBox;
 
@@ -23,6 +24,21 @@ public final class BrowserSurfaceSizingState {
             double initialScaleX,
             double initialScaleY
     ) {
+        this(surfaceWidth, surfaceHeight, autoResolution, resolutionWidth, resolutionHeight, initialViewBox, initialScaleX, initialScaleY, false);
+    }
+
+    public BrowserSurfaceSizingState(
+            int surfaceWidth,
+            int surfaceHeight,
+            boolean autoResolution,
+            int resolutionWidth,
+            int resolutionHeight,
+            Rectangle initialViewBox,
+            double initialScaleX,
+            double initialScaleY,
+            boolean integerPixelScale
+    ) {
+        this.integerPixelScale = integerPixelScale;
         this.surfaceWidth = requirePositive(surfaceWidth, "surfaceWidth");
         this.surfaceHeight = requirePositive(surfaceHeight, "surfaceHeight");
         this.autoResolution = autoResolution;
@@ -141,6 +157,12 @@ public final class BrowserSurfaceSizingState {
         syncViewBoxToResolution();
     }
 
+    public CssViewport cssViewport(double cssPixelsPerSurfacePixel) {
+        int viewWidth = Math.max(MIN_SIZE, (int) Math.round(surfaceWidth * cssPixelsPerSurfacePixel));
+        int viewHeight = Math.max(MIN_SIZE, (int) Math.round(surfaceHeight * cssPixelsPerSurfacePixel));
+        return new CssViewport(viewWidth, viewHeight, (double) resolutionWidth / viewWidth);
+    }
+
     public Point toBrowserPoint(double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
         int browserX = toBrowserX(surfaceX, renderedWidth);
         int browserY = toBrowserY(surfaceY, renderedHeight);
@@ -171,11 +193,23 @@ public final class BrowserSurfaceSizingState {
     }
 
     private int calculateAutoResolutionWidth(double scaleX) {
+        if (integerPixelScale) {
+            return surfaceWidth * integerScale(scaleX);
+        }
+
         return (int) Math.max(MIN_SIZE, Math.round(surfaceWidth * scaleX));
     }
 
     private int calculateAutoResolutionHeight(double scaleY) {
+        if (integerPixelScale) {
+            return surfaceHeight * integerScale(scaleY);
+        }
+
         return (int) Math.max(MIN_SIZE, Math.round(surfaceHeight * scaleY));
+    }
+
+    private static int integerScale(double scale) {
+        return (int) Math.max(1L, Math.round(scale));
     }
 
     private void syncViewBoxToResolution() {
@@ -195,6 +229,9 @@ public final class BrowserSurfaceSizingState {
 
     private void clampViewBoxToResolution() {
         setViewBoxInternal(viewBox);
+    }
+
+    public record CssViewport(int width, int height, double zoom) {
     }
 
     public record ResizeInstruction(boolean shouldResizeBrowser, int width, int height) {
