@@ -52,19 +52,12 @@ public final class GraphenePageDefaults {
     private GraphenePageDefaults() {
     }
 
-    public static void applySurfaceCssPixels(CefBrowser browser, int cssWidth, int cssHeight, double zoom) {
-        CefFrame mainFrame = browser.getMainFrame();
-        if (mainFrame == null || !mainFrame.isValid()) {
-            return;
-        }
-
-        String frameUrl = Objects.requireNonNullElse(mainFrame.getURL(), "about:blank");
-        String script = SURFACE_CSS_PIXELS_SCRIPT.formatted(cssWidth, cssHeight, Double.toString(zoom));
-        mainFrame.executeJavaScript(script, frameUrl, 0);
+    public static void applySurfaceCssPixels(GrapheneBrowser browser, int cssWidth, int cssHeight, double zoom) {
+        browser.executeScript(SURFACE_CSS_PIXELS_SCRIPT.formatted(cssWidth, cssHeight, Double.toString(zoom)));
     }
 
     public static void disableTextSelection(CefBrowser browser, CefFrame frame) {
-        CefFrame targetFrame = frame == null || !frame.isValid() ? browser.getMainFrame() : frame;
+        CefFrame targetFrame = frame == null ? browser.getMainFrame() : frame;
         if (targetFrame == null || !targetFrame.isValid()) {
             return;
         }
