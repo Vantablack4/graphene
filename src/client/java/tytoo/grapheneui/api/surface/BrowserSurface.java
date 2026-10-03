@@ -103,10 +103,8 @@ public final class BrowserSurface implements AutoCloseable {
                 if (!config.allowsTextSelection()) {
                     GraphenePageDefaults.disableTextSelection(browser, frame);
                 }
-                if (frame == null || frame.isMain()) {
-                    appliedCssViewport = null;
-                    applySurfaceCssPixels();
-                }
+                appliedCssViewport = null;
+                applySurfaceCssPixels();
             }
         });
         this.browser.createImmediately();

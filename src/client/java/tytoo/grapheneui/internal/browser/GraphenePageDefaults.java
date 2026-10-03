@@ -64,7 +64,7 @@ public final class GraphenePageDefaults {
     }
 
     public static void disableTextSelection(CefBrowser browser, CefFrame frame) {
-        CefFrame targetFrame = frame == null ? browser.getMainFrame() : frame;
+        CefFrame targetFrame = frame == null || !frame.isValid() ? browser.getMainFrame() : frame;
         if (targetFrame == null || !targetFrame.isValid()) {
             return;
         }
