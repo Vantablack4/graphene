@@ -360,9 +360,18 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     }
 
     public void wasResizedTo(int width, int height) {
+        if (frameScheduling == BrowserSurfaceFrameScheduling.RENDER_DRIVEN) {
+            browserRect.setBounds(0, 0, width, height);
+            super.wasResized(width, height);
+            return;
+        }
+
         requestedWidth = width;
         requestedHeight = height;
         resizeRequested = true;
+        if (!resizeInFlight) {
+            syncRequestedSize();
+        }
     }
 
     public void mouseMoved(int x, int y, int modifiers) {
