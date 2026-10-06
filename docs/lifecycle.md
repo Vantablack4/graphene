@@ -9,9 +9,44 @@ Understanding Graphene lifecycle rules prevents stale bridge state and browser l
 - Re-registering the same consumer is allowed only when config is identical.
 - Different config for the same consumer throws `IllegalStateException`.
 - Runtime initializes automatically before the first client tick when at least one consumer is registered.
-- Runtime can also initialize lazily on first `GrapheneCore.runtime()` or first surface creation.
+- Runtime can also initialize lazily on first `GrapheneCore.runtime()`, `GrapheneCore.startup()`, HTTP URL lookup, or
+  first surface creation.
+- `GrapheneCore.startup()` starts Graphene in the background and returns a future; never join that future on the
+  render thread.
+- `GrapheneCore.runtime()` blocks until startup finishes off the render thread and in Fabric client GameTests. On the
+  render thread it never blocks: while Graphene is starting it starts it in the background and throws
+  `IllegalStateException`. Check `GrapheneCore.isInitialized()` first.
+- Any of these calls closes consumer registration, including an HTTP URL lookup. Do not build URLs from
+  `onInitializeClient()`.
+- The HTTP server starts before the CEF natives download, so `httpAssets()` and `httpUrl(...)` resolve immediately and
+  keep the same base URL across startup retries.
+- While the CEF natives download on first launch, Graphene shows a progress toast. It never blocks input.
 
 If no consumer is registered, first Graphene usage fails with `IllegalStateException`.
+
+## Starting Surfaces
+
+A `BrowserSurface` built on the render thread while Graphene is still starting does not wait for it:
+
+- `isStarting()` is `true` and the surface renders nothing; `prepareTextureFrame()` returns `null`.
+- `bridge()` already accepts `onReady`, `onEvent`, and `onRequest` handlers, and `emit(...)` messages queue until the
+  page is ready.
+- `loadUrl(...)` replaces the pending URL; `goBack()`, `goForward()`, and `reload()` do nothing yet.
+- Sizes and load listeners apply to the browser when it is created.
+- The browser is created on the first `render(...)`, `prepareTextureFrame()`, or `tryCreateBrowser()` call after
+  Graphene is ready. After a failed startup these calls retry it every 15 seconds.
+- Java-side `request(...)` calls made while starting stay pending through the first page load and are answered once the
+  page is ready, unless they time out first.
+- If the browser cannot be created after startup, `hasFailed()` turns `true` and the surface never renders.
+
+`GrapheneWebViewWidget` draws a native "Arayüz hazırlanıyor" placeholder with download progress while its surface is
+starting, or "Arayüz açılamadı" after a failure (override `drawStartupPlaceholder(...)` to customize it), and ignores
+input. When every web view on a screen is starting or failed, Escape closes the screen through `onClose()` even if the
+screen normally routes Escape to its page, as long as `shouldCloseOnEsc()` is `true`.
+
+Set `-Dgraphene.surface.awaitStartup=true` to make surface creation block until Graphene is ready, as it did before.
+Fabric client GameTest runs and surfaces built off the render thread use that blocking mode by default; set the
+property to `false` to test the starting state.
 
 ## Shared Config Merge Lifecycle
 

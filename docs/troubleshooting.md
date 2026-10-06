@@ -160,7 +160,8 @@ Likely cause:
 Fix:
 
 - Register with `.container(GrapheneContainerConfig.builder().http(GrapheneHttpConfig.builder() ... .build()).build())`.
-- Verify `GrapheneCore.runtime().httpServer().isRunning()` before generating HTTP URLs.
+- HTTP URL lookups start the HTTP server on demand without waiting for CEF; a "not running" error means no registered
+  consumer configured `GrapheneContainerConfig.http(...)`.
 
 ## HTTP `fileRoot` Not Serving Updated Files
 

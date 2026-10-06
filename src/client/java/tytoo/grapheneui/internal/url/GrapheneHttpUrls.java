@@ -3,6 +3,7 @@ package tytoo.grapheneui.internal.url;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.runtime.GrapheneHttpServer;
 import tytoo.grapheneui.api.url.GrapheneAssetUrls;
+import tytoo.grapheneui.internal.core.GrapheneCoreServices;
 
 public final class GrapheneHttpUrls {
     private static final String PATH_DELIMITER = "/";
@@ -31,7 +32,12 @@ public final class GrapheneHttpUrls {
     }
 
     private static String requireHttpBaseUrl() {
-        GrapheneHttpServer server = GrapheneCore.runtime().httpServer();
+        GrapheneHttpServer server = GrapheneCoreServices.get().runtime().httpServer();
+        if (!server.isRunning()) {
+            GrapheneCore.startup();
+            server = GrapheneCoreServices.get().runtime().httpServer();
+        }
+
         if (!server.isRunning()) {
             throw new IllegalStateException(
                     "Graphene HTTP server is not running. Configure GrapheneContainerConfig.http(...) and register Graphene with GrapheneCore.register(...)."

@@ -10,14 +10,19 @@ import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
 import org.cef.browser.CefRequestContext;
 import org.cef.network.CefRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
 import tytoo.grapheneui.api.nativeui.GrapheneNativeSlots;
+import tytoo.grapheneui.internal.bridge.GrapheneBridgeEndpoint;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceLoadListenerScope;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceSizingState;
 import tytoo.grapheneui.internal.browser.GrapheneBrowser;
 import tytoo.grapheneui.internal.browser.GraphenePageDefaults;
+import tytoo.grapheneui.internal.cef.GrapheneCefRuntime;
 import tytoo.grapheneui.internal.core.GrapheneCoreServices;
+import tytoo.grapheneui.internal.core.GrapheneStartupPolicy;
 import tytoo.grapheneui.internal.mc.McWindowScale;
 import tytoo.grapheneui.internal.nativeui.GrapheneNativeSlotRegistry;
 
@@ -34,10 +39,18 @@ import java.util.function.Consumer;
  * <p>
  * The browser surface provides methods for navigation, loading URLs, and subscribing to load events.
  * It also manages its own lifecycle and should be closed when no longer needed to free resources.
+ * <p>
+ * A surface built on the render thread while Graphene is still starting (for example while the CEF natives
+ * download on first launch) does not wait for it. It stays {@linkplain #isStarting() starting}, renders nothing,
+ * queues bridge traffic and remembers the latest URL and size, then creates its browser on the first render or
+ * texture request after Graphene is ready. Set the system property {@value #AWAIT_STARTUP_PROPERTY} to
+ * {@code true} to restore the blocking behaviour; Fabric client GameTest runs use it by default.
  */
 
 @SuppressWarnings("unused") // Public API
 public final class BrowserSurface implements AutoCloseable {
+    public static final String AWAIT_STARTUP_PROPERTY = GrapheneStartupPolicy.AWAIT_STARTUP_PROPERTY;
+    private static final Logger LOGGER = LoggerFactory.getLogger(BrowserSurface.class);
     private static final int MIN_SIZE = 1;
     private static final String OWNER_NAME = "owner";
     private static final String SURFACE_WIDTH_NAME = "surfaceWidth";
@@ -45,15 +58,21 @@ public final class BrowserSurface implements AutoCloseable {
     private static final Consumer<CefRequestContext> NO_OP_REQUEST_CONTEXT_CUSTOMIZER = ignoredRequestContext -> {
     };
 
-    private final GrapheneBrowser browser;
-    private final GrapheneBridge bridge;
+    private final GrapheneBridgeEndpoint bridge;
     private final GrapheneNativeSlotRegistry nativeSlots;
     private final BrowserSurfaceSizingState sizingState;
     private final BrowserSurfaceLoadListenerScope loadListenerScope;
     private final GrapheneCoreServices services;
     private final BrowserSurfaceConfig config;
     private final BrowserSurfaceAccelerationStatus accelerationStatus;
+    private final CefClient explicitClient;
+    private final CefRequestContext explicitRequestContext;
+    private final Consumer<CefRequestContext> requestContextCustomizer;
+    private final boolean transparent;
+    private volatile GrapheneBrowser browser;
+    private String pendingUrl;
     private BrowserSurfaceSizingState.CssViewport appliedCssViewport;
+    private boolean activationFailed;
     private boolean closed;
 
     private BrowserSurface(Builder builder) {
@@ -70,28 +89,26 @@ public final class BrowserSurface implements AutoCloseable {
                 builder.config != null && builder.config.usesSurfaceCssPixels()
         );
 
-        GrapheneCore.runtime();
-
-        CefClient cefClient = builder.client != null ? builder.client : services.runtimeInternal().requireClient();
-        CefRequestContext requestContext = builder.requestContext != null ? builder.requestContext : CefRequestContext.getGlobalContext();
-        builder.requestContextCustomizer.accept(requestContext);
         this.config = builder.config != null ? builder.config : BrowserSurfaceConfig.defaults();
         this.accelerationStatus = BrowserSurfaceAccelerationStatus.softwareFallback(
                 this.config.acceleratedPaintPreferred()
         );
+        this.explicitClient = builder.client;
+        this.explicitRequestContext = builder.requestContext;
+        this.requestContextCustomizer = builder.requestContextCustomizer;
+        this.transparent = builder.transparent;
+        this.pendingUrl = builder.url;
 
-        this.browser = new GrapheneBrowser(
-                cefClient,
-                builder.url,
-                builder.transparent,
-                requestContext,
-                this.config.toCefBrowserSettings(),
-                this.config.frameScheduling(),
-                this.config.performanceMetricsEnabled()
-        );
-        this.bridge = services.runtimeInternal().attachBridge(this.browser);
+        if (GrapheneStartupPolicy.awaitsStartupOnCurrentThread()) {
+            GrapheneCore.runtime();
+        } else {
+            GrapheneCore.startup();
+        }
+
+        GrapheneCefRuntime runtime = services.runtimeInternal();
+        this.bridge = runtime.createBridge();
         this.nativeSlots = new GrapheneNativeSlotRegistry(this.bridge);
-        this.loadListenerScope = new BrowserSurfaceLoadListenerScope(this.browser, services.runtimeInternal().getLoadEventBus());
+        this.loadListenerScope = new BrowserSurfaceLoadListenerScope(runtime.getLoadEventBus());
         this.loadListenerScope.add(new GrapheneLoadListener() {
             @Override
             public void onLoadStart(CefBrowser browser, CefFrame frame, CefRequest.TransitionType transitionType) {
@@ -107,10 +124,17 @@ public final class BrowserSurface implements AutoCloseable {
                 applySurfaceCssPixels();
             }
         });
-        this.browser.createImmediately();
-        this.browser.wasResizedTo(sizingState.resolutionWidth(), sizingState.resolutionHeight());
         if (builder.owner != null) {
             services.surfaceManager().register(builder.owner, this);
+        }
+
+        if (runtime.isInitialized()) {
+            try {
+                createBrowser();
+            } catch (RuntimeException exception) {
+                close();
+                throw exception;
+            }
         }
     }
 
@@ -130,28 +154,59 @@ public final class BrowserSurface implements AutoCloseable {
         return nativeSlots;
     }
 
+    /**
+     * Returns whether this surface is still waiting for Graphene to start before it can create its browser.
+     * A starting surface renders nothing; {@link tytoo.grapheneui.api.widget.GrapheneWebViewWidget} draws a
+     * native placeholder in its place.
+     */
+    public boolean isStarting() {
+        return browser == null && !closed && !activationFailed;
+    }
+
+    /**
+     * Returns whether Graphene started but this surface could not create its browser. Such a surface never renders.
+     */
+    public boolean hasFailed() {
+        return activationFailed;
+    }
+
+    /**
+     * Creates the browser now if Graphene has finished starting. Rendering does this automatically.
+     *
+     * @return {@code true} once the surface has a browser, {@code false} while Graphene is still starting
+     */
+    public boolean tryCreateBrowser() {
+        return !closed && ensureBrowser();
+    }
+
     public boolean canGoBack() {
-        return browser.canGoBack();
+        GrapheneBrowser activeBrowser = browser;
+        return activeBrowser != null && activeBrowser.canGoBack();
     }
 
     public boolean canGoForward() {
-        return browser.canGoForward();
+        GrapheneBrowser activeBrowser = browser;
+        return activeBrowser != null && activeBrowser.canGoForward();
     }
 
     public boolean isLoading() {
-        return browser.isLoading();
+        GrapheneBrowser activeBrowser = browser;
+        return activeBrowser == null ? isStarting() : activeBrowser.isLoading();
     }
 
     public CursorType getRequestedCursor() {
-        return browser.getRequestedCursor();
+        GrapheneBrowser activeBrowser = browser;
+        return activeBrowser == null ? CursorType.DEFAULT : activeBrowser.getRequestedCursor();
     }
 
     public String currentUrl() {
-        return browser.currentUrl();
+        GrapheneBrowser activeBrowser = browser;
+        return activeBrowser == null ? pendingUrl : activeBrowser.currentUrl();
     }
 
     public Optional<BrowserSurfacePerformanceSnapshot> performanceSnapshot() {
-        return browser.performanceSnapshot();
+        GrapheneBrowser activeBrowser = browser;
+        return activeBrowser == null ? Optional.empty() : activeBrowser.performanceSnapshot();
     }
 
     public BrowserSurfaceAccelerationStatus accelerationStatus() {
@@ -159,27 +214,49 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     public void loadUrl(String url) {
+        String validatedUrl = Objects.requireNonNull(url, "url");
         nativeSlots.clearPageSlots();
-        services.runtimeInternal().onNavigationRequested(browser);
-        browser.loadURL(url);
+        GrapheneBrowser activeBrowser = browser;
+        if (activeBrowser == null) {
+            pendingUrl = validatedUrl;
+            return;
+        }
+
+        services.runtimeInternal().onNavigationRequested(activeBrowser);
+        activeBrowser.loadURL(validatedUrl);
     }
 
     public void goBack() {
+        GrapheneBrowser activeBrowser = browser;
+        if (activeBrowser == null) {
+            return;
+        }
+
         nativeSlots.clearPageSlots();
-        services.runtimeInternal().onNavigationRequested(browser);
-        browser.goBack();
+        services.runtimeInternal().onNavigationRequested(activeBrowser);
+        activeBrowser.goBack();
     }
 
     public void goForward() {
+        GrapheneBrowser activeBrowser = browser;
+        if (activeBrowser == null) {
+            return;
+        }
+
         nativeSlots.clearPageSlots();
-        services.runtimeInternal().onNavigationRequested(browser);
-        browser.goForward();
+        services.runtimeInternal().onNavigationRequested(activeBrowser);
+        activeBrowser.goForward();
     }
 
     public void reload() {
+        GrapheneBrowser activeBrowser = browser;
+        if (activeBrowser == null) {
+            return;
+        }
+
         nativeSlots.clearPageSlots();
-        services.runtimeInternal().onNavigationRequested(browser);
-        browser.reload();
+        services.runtimeInternal().onNavigationRequested(activeBrowser);
+        activeBrowser.reload();
     }
 
     public int getSurfaceWidth() {
@@ -287,7 +364,7 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     public void render(GuiGraphicsExtractor graphics, int x, int y, int width, int height) {
-        if (closed) {
+        if (closed || !ensureBrowser()) {
             return;
         }
 
@@ -302,7 +379,7 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     public BrowserSurfaceTextureFrame prepareTextureFrame() {
-        if (closed) {
+        if (closed || !ensureBrowser()) {
             return null;
         }
 
@@ -326,21 +403,87 @@ public final class BrowserSurface implements AutoCloseable {
         services.surfaceManager().unregister(this);
         nativeSlots.close();
         loadListenerScope.close();
-        services.runtimeInternal().detachBridge(browser);
-        browser.close();
+        GrapheneBrowser activeBrowser = browser;
+        if (activeBrowser == null) {
+            bridge.close();
+            return;
+        }
+
+        services.runtimeInternal().detachBridge(activeBrowser);
+        activeBrowser.close();
+    }
+
+    private boolean ensureBrowser() {
+        if (browser != null) {
+            return true;
+        }
+
+        if (activationFailed) {
+            return false;
+        }
+
+        GrapheneCefRuntime runtime = services.runtimeInternal();
+        if (!runtime.isInitialized()) {
+            if (runtime.isStartupRetryDue()) {
+                GrapheneCore.startup();
+            }
+
+            return false;
+        }
+
+        try {
+            createBrowser();
+            return true;
+        } catch (RuntimeException exception) {
+            activationFailed = true;
+            LOGGER.error("Failed to create the browser for a Graphene surface after startup", exception);
+            return false;
+        }
+    }
+
+    private void createBrowser() {
+        GrapheneCefRuntime runtime = services.runtimeInternal();
+        CefClient cefClient = explicitClient != null ? explicitClient : runtime.requireClient();
+        CefRequestContext requestContext = explicitRequestContext != null
+                ? explicitRequestContext
+                : CefRequestContext.getGlobalContext();
+        requestContextCustomizer.accept(requestContext);
+
+        GrapheneBrowser createdBrowser = new GrapheneBrowser(
+                cefClient,
+                pendingUrl,
+                transparent,
+                requestContext,
+                config.toCefBrowserSettings(),
+                config.frameScheduling(),
+                config.performanceMetricsEnabled()
+        );
+        try {
+            loadListenerScope.bindBrowser(createdBrowser);
+            runtime.attachBridge(createdBrowser, bridge);
+        } catch (RuntimeException exception) {
+            createdBrowser.close();
+            throw exception;
+        }
+
+        browser = createdBrowser;
+        createdBrowser.createImmediately();
+        createdBrowser.wasResizedTo(sizingState.resolutionWidth(), sizingState.resolutionHeight());
     }
 
     private void applyResizeInstruction(BrowserSurfaceSizingState.ResizeInstruction resizeInstruction) {
         applySurfaceCssPixels();
-        if (!resizeInstruction.shouldResizeBrowser()) {
+        GrapheneBrowser activeBrowser = browser;
+        if (activeBrowser == null || !resizeInstruction.shouldResizeBrowser()) {
             return;
         }
 
-        browser.wasResizedTo(resizeInstruction.width(), resizeInstruction.height());
+        activeBrowser.wasResizedTo(resizeInstruction.width(), resizeInstruction.height());
     }
 
     private void applySurfaceCssPixels() {
-        if (!config.usesSurfaceCssPixels() || closed) {
+        GrapheneBrowser activeBrowser = browser;
+        if (!config.usesSurfaceCssPixels() || closed || activeBrowser == null) {
             return;
         }
 
@@ -350,7 +493,7 @@ public final class BrowserSurface implements AutoCloseable {
         }
 
         appliedCssViewport = viewport;
-        GraphenePageDefaults.applySurfaceCssPixels(browser, viewport.width(), viewport.height(), viewport.zoom());
+        GraphenePageDefaults.applySurfaceCssPixels(activeBrowser, viewport.width(), viewport.height(), viewport.zoom());
     }
 
     private void pushBootstrap(ProfilerFiller profiler) {

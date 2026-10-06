@@ -12,6 +12,7 @@ Current test classes include:
 - `GrapheneBridgeJsonApiTest`
 - `GrapheneBridgeMessageCodecTest`
 - `GrapheneBridgeOutboundQueueTest`
+- `GrapheneBridgeDeferredEndpointTest`
 - `GrapheneAppUrlsTest`
 - `GrapheneClasspathUrlsTest`
 - `GrapheneHttpUrlsTest`
@@ -29,6 +30,18 @@ Current test classes include:
 - `GrapheneLinuxKeyEventPlatformResolverTest`
 
 These cover bridge serialization and routing behavior, URL/path normalization, HTTP server behavior, MIME detection, viewport/input/native-slot mapping, and debug selector parsing.
+
+## Client GameTests In Consumer Mods
+
+Under `fabric.client.gametest`, building a `BrowserSurface` or `GrapheneWebViewWidget` blocks until Graphene is ready
+(see [Lifecycle](lifecycle.md#starting-surfaces)). On macOS, the render thread must stay free while CEF starts, so wait
+for startup from the test thread before opening Graphene screens:
+
+```java
+context.waitFor(client -> GrapheneCore.isInitialized(), 2400);
+```
+
+To exercise the starting placeholder instead, set `graphene.surface.awaitStartup` to `false` before opening the screen.
 
 ## In-Game Debug Validation
 

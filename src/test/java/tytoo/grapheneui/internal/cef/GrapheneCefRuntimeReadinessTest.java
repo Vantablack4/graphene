@@ -36,7 +36,13 @@ final class GrapheneCefRuntimeReadinessTest {
 
         assertTrue(lockHeld.await(2, TimeUnit.SECONDS));
         try {
-            assertTimeoutPreemptively(Duration.ofMillis(200), () -> assertFalse(runtime.isInitialized()));
+            assertTimeoutPreemptively(Duration.ofMillis(200), () -> {
+                assertFalse(runtime.isInitialized());
+                assertFalse(runtime.httpServer().isRunning());
+                assertFalse(runtime.hasFailedStartup());
+                assertFalse(runtime.isStartupRetryDue());
+                assertFalse(runtime.nativeDownloadState().isActive());
+            });
         } finally {
             releaseLock.countDown();
             lockHolder.join(2_000L);

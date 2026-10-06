@@ -35,13 +35,29 @@ public final class GrapheneBridgeRuntime {
         }
     }
 
+    public GrapheneBridgeEndpoint createEndpoint() {
+        return new GrapheneBridgeEndpoint(options);
+    }
+
     public GrapheneBridge attach(GrapheneBrowser browser) {
         Objects.requireNonNull(browser, BROWSER_NAME);
+        return attach(browser, new GrapheneBridgeEndpoint(browser, options));
+    }
+
+    public GrapheneBridgeEndpoint attach(GrapheneBrowser browser, GrapheneBridgeEndpoint newEndpoint) {
+        Objects.requireNonNull(browser, BROWSER_NAME);
+        Objects.requireNonNull(newEndpoint, "endpoint");
+        newEndpoint.bindBrowser(browser);
+        if (newEndpoint.isClosed()) {
+            return newEndpoint;
+        }
 
         GrapheneBridgeEndpoint previousEndpoint;
-        GrapheneBridgeEndpoint newEndpoint = new GrapheneBridgeEndpoint(browser, options);
         synchronized (lock) {
             previousEndpoint = endpointsByBrowser.put(browser, newEndpoint);
+            if (previousEndpoint == newEndpoint) {
+                previousEndpoint = null;
+            }
             if (previousEndpoint != null) {
                 removeEndpointMappingsLocked(previousEndpoint);
             }

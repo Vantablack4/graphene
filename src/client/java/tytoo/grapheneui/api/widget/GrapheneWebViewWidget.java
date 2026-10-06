@@ -16,6 +16,7 @@ import tytoo.grapheneui.api.surface.BrowserSurface;
 import tytoo.grapheneui.api.surface.BrowserSurfaceConfig;
 import tytoo.grapheneui.api.surface.BrowserSurfaceInputAdapter;
 import tytoo.grapheneui.api.surface.GrapheneLoadListener;
+import tytoo.grapheneui.internal.cef.startup.GrapheneStartupPlaceholder;
 import tytoo.grapheneui.internal.screen.GrapheneScreenBridge;
 
 import java.io.Closeable;
@@ -24,6 +25,8 @@ import java.util.Objects;
 /**
  * A widget that displays a web view using a {@link BrowserSurface}.
  * The widget handles rendering the surface and forwarding input events to it.
+ * While Graphene is still starting, the widget draws a native placeholder and ignores input; its bridge already
+ * accepts handlers and queues events, which reach the page once it loads.
  */
 public class GrapheneWebViewWidget extends AbstractWidget implements Closeable {
     private static final String DEFAULT_URL = "about:blank";
@@ -146,8 +149,24 @@ public class GrapheneWebViewWidget extends AbstractWidget implements Closeable {
         return surface.canGoForward();
     }
 
+    public boolean isStarting() {
+        return surface.isStarting();
+    }
+
+    public boolean hasFailed() {
+        return surface.hasFailed();
+    }
+
     @Override
     protected void extractWidgetRenderState(@NonNull GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        if (!surface.tryCreateBrowser()) {
+            if (surface.isStarting() || surface.hasFailed()) {
+                drawStartupPlaceholder(graphics);
+            }
+
+            return;
+        }
+
         if (!inputAdapter.isPrimaryPointerButtonDown() && isMouseOver(mouseX, mouseY)) {
             inputAdapter.mouseMoved(localX(mouseX), localY(mouseY), getWidth(), getHeight());
         }
@@ -167,6 +186,17 @@ public class GrapheneWebViewWidget extends AbstractWidget implements Closeable {
         if (isMouseOver(mouseX, mouseY)) {
             graphics.requestCursor(surface.getRequestedCursor());
         }
+    }
+
+    /**
+     * Draws the placeholder shown while Graphene is still starting, for example while the CEF natives download
+     * on first launch, or when the surface could not create its browser.
+     *
+     * <p>The default implementation dims the widget and shows the startup status. Override this method to
+     * provide a custom placeholder.</p>
+     */
+    protected void drawStartupPlaceholder(@NonNull GuiGraphicsExtractor graphics) {
+        GrapheneStartupPlaceholder.draw(graphics, getX(), getY(), getWidth(), getHeight(), surface.hasFailed());
     }
 
     /**

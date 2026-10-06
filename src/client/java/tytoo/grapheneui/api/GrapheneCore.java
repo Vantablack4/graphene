@@ -11,6 +11,7 @@ import tytoo.grapheneui.api.config.*;
 import tytoo.grapheneui.api.runtime.GrapheneRuntime;
 import tytoo.grapheneui.internal.cef.GrapheneCefRuntime;
 import tytoo.grapheneui.internal.core.GrapheneCoreServices;
+import tytoo.grapheneui.internal.core.GrapheneStartupPolicy;
 import tytoo.grapheneui.internal.mc.McClient;
 import tytoo.grapheneui.internal.world.GrapheneWorldSurfaceManager;
 
@@ -19,6 +20,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * The core class of the Graphene library.
@@ -104,11 +106,70 @@ public final class GrapheneCore implements ClientModInitializer {
         SERVICES.surfaceManager().closeOwner(validatedOwner);
     }
 
+    /**
+     * Returns the Graphene runtime, starting it first if needed.
+     * <p>
+     * Off the render thread (and in Fabric client GameTests) this blocks until Graphene is ready, which takes
+     * minutes while the CEF natives download on first launch. On the render thread it never blocks: while Graphene
+     * is still starting it starts it in the background and throws. Check {@link #isInitialized()} first; browser
+     * surfaces and web view widgets already start lazily without blocking.
+     *
+     * @throws IllegalStateException on the render thread while Graphene is starting or after a failed startup
+     */
     public static GrapheneRuntime runtime() {
+        GrapheneCefRuntime runtime = SERVICES.runtimeInternal();
+        GrapheneGlobalConfig globalConfig;
+        Map<String, GrapheneContainerConfig> containerConfigs;
+        int consumerCount;
         synchronized (GrapheneCore.class) {
-            ensureInitialized();
+            if (runtime.isInitialized()) {
+                return SERVICES.runtime();
+            }
+
+            requireConsumers();
+            registrationClosed = true;
+            if (runtime.hasFailedStartup() && McClient.isOnMainThread()) {
+                runtime.initializeAsync(mergeGlobalConfig(), snapshotContainerConfigs());
+                throw new IllegalStateException("Graphene failed to start; retrying in the background");
+            }
+
+            if (!GrapheneStartupPolicy.awaitsStartupOnCurrentThread()) {
+                runtime.initializeAsync(mergeGlobalConfig(), snapshotContainerConfigs());
+                throw new IllegalStateException(
+                        "Graphene is still starting; check GrapheneCore.isInitialized() before using the runtime on the render thread"
+                );
+            }
+
+            globalConfig = mergeGlobalConfig();
+            containerConfigs = snapshotContainerConfigs();
+            consumerCount = CONSUMERS.size();
         }
+
+        runtime.initialize(globalConfig, containerConfigs);
+        LOGGER.info("Graphene initialized with {} registered consumer(s)", consumerCount);
         return SERVICES.runtime();
+    }
+
+    /**
+     * Starts Graphene in the background if it is not running yet and returns without waiting.
+     * <p>
+     * The returned future completes once Graphene is ready. Calling this after a failed startup starts a new
+     * attempt. Never join the future on the render thread: CEF startup needs that thread on some platforms.
+     * Client GameTests should wait with {@code context.waitFor(client -> GrapheneCore.isInitialized(), ticks)}.
+     *
+     * @throws IllegalStateException if no Graphene consumer is registered
+     */
+    public static CompletableFuture<Void> startup() {
+        synchronized (GrapheneCore.class) {
+            GrapheneCefRuntime runtime = SERVICES.runtimeInternal();
+            if (runtime.isInitialized()) {
+                return CompletableFuture.completedFuture(null);
+            }
+
+            requireConsumers();
+            registrationClosed = true;
+            return runtime.initializeAsync(mergeGlobalConfig(), snapshotContainerConfigs());
+        }
     }
 
     private static GrapheneHandle registerConsumer(String modId, GrapheneConfig config) {
@@ -226,26 +287,12 @@ public final class GrapheneCore implements ClientModInitializer {
         return normalizedModId;
     }
 
-    private static void ensureInitialized() {
-        if (SERVICES.runtimeInternal().isInitialized()) {
-            return;
-        }
-
+    private static void requireConsumers() {
         if (CONSUMERS.isEmpty()) {
             throw new IllegalStateException(
                     "No Graphene consumer registered. Call GrapheneCore.register(...) before Graphene is used"
             );
         }
-
-        registrationClosed = true;
-        GrapheneCefRuntime runtime = SERVICES.runtimeInternal();
-        if (runtime.hasFailedStartup() && McClient.isOnMainThread()) {
-            runtime.initializeAsync(mergeGlobalConfig(), snapshotContainerConfigs());
-            throw new IllegalStateException("Graphene failed to start; retrying in the background");
-        }
-
-        runtime.initialize(mergeGlobalConfig(), snapshotContainerConfigs());
-        LOGGER.info("Graphene initialized with {} registered consumer(s)", CONSUMERS.size());
     }
 
     private static Map<String, GrapheneContainerConfig> snapshotContainerConfigs() {

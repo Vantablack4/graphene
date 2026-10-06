@@ -7,6 +7,7 @@ import java.util.Objects;
 public final class GrapheneNativeDownloadState {
     private final String platformIdentifier;
     private volatile boolean active;
+    private volatile boolean postDownloadWork;
     private volatile float progress;
 
     public GrapheneNativeDownloadState(String platformIdentifier) {
@@ -26,8 +27,13 @@ public final class GrapheneNativeDownloadState {
         return progress;
     }
 
+    public boolean isPostDownloadWork() {
+        return postDownloadWork;
+    }
+
     public void beginDownload(float percent) {
         active = true;
+        postDownloadWork = false;
         updateProgress(percent);
     }
 
@@ -41,11 +47,13 @@ public final class GrapheneNativeDownloadState {
 
     public void markPostDownloadWork() {
         active = true;
+        postDownloadWork = true;
         progress = 1.0F;
     }
 
     public void reset() {
         active = false;
+        postDownloadWork = false;
         progress = 0.0F;
     }
 }

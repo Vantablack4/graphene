@@ -2,6 +2,7 @@ package tytoo.grapheneui.api.surface;
 
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
+import tytoo.grapheneui.internal.browser.GrapheneBrowser;
 import tytoo.grapheneui.internal.browser.GrapheneFocusUtil;
 import tytoo.grapheneui.internal.browser.GrapheneWebViewInputController;
 
@@ -18,21 +19,13 @@ public final class BrowserSurfaceInputAdapter {
 
     private final BrowserSurface surface;
     private final GrapheneFocusUtil focusUtil;
-    private final GrapheneWebViewInputController inputController;
+    private GrapheneWebViewInputController inputController;
     private double pendingWheelAmount;
 
     public BrowserSurfaceInputAdapter(BrowserSurface surface) {
         this.surface = Objects.requireNonNull(surface, "surface");
-        this.focusUtil = new GrapheneFocusUtil(this.surface.internalBrowser()::setFocus);
-        this.inputController = new GrapheneWebViewInputController(
-                this.surface.internalBrowser(),
-                this.focusUtil,
-                this.surface.bridge(),
-                this.surface.allowsZoom(),
-                this.surface.allowsAltF4Close()
-        );
-        this.focusUtil.addFocusListener(this.inputController::onFocusChanged);
-        this.focusUtil.syncNativeFocus();
+        this.focusUtil = new GrapheneFocusUtil(this::applyNativeFocus);
+        inputController();
     }
 
     public boolean isFocused() {
@@ -44,47 +37,98 @@ public final class BrowserSurfaceInputAdapter {
     }
 
     public boolean isPrimaryPointerButtonDown() {
-        return inputController.isPrimaryPointerButtonDown();
+        GrapheneWebViewInputController controller = inputController();
+        return controller != null && controller.isPrimaryPointerButtonDown();
     }
 
     public void mouseMoved(double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
-        inputController.updateMousePosition(toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return;
+        }
+
+        controller.updateMousePosition(toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }
 
     public void mouseMoved(Point browserPoint) {
-        inputController.updateMousePosition(copyBrowserPoint(browserPoint));
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return;
+        }
+
+        controller.updateMousePosition(copyBrowserPoint(browserPoint));
     }
 
     public void mouseExited() {
-        inputController.onMouseExited();
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return;
+        }
+
+        controller.onMouseExited();
     }
 
     public void mouseClicked(int button, boolean isDoubleClick, double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
-        inputController.onMouseClicked(button, isDoubleClick, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return;
+        }
+
+        controller.onMouseClicked(button, isDoubleClick, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }
 
     public void mouseClicked(int button, boolean isDoubleClick, Point browserPoint) {
-        inputController.onMouseClicked(button, isDoubleClick, copyBrowserPoint(browserPoint));
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return;
+        }
+
+        controller.onMouseClicked(button, isDoubleClick, copyBrowserPoint(browserPoint));
     }
 
     public boolean mouseReleased(int button, double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
-        return inputController.onMouseReleased(button, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return false;
+        }
+
+        return controller.onMouseReleased(button, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }
 
     public boolean mouseReleased(int button, Point browserPoint) {
-        return inputController.onMouseReleased(button, copyBrowserPoint(browserPoint));
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return false;
+        }
+
+        return controller.onMouseReleased(button, copyBrowserPoint(browserPoint));
     }
 
     public boolean mouseDragged(int button, double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {
-        return inputController.onMouseDragged(button, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return false;
+        }
+
+        return controller.onMouseDragged(button, toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight));
     }
 
     public boolean mouseDragged(int button, Point browserPoint) {
-        return inputController.onMouseDragged(button, copyBrowserPoint(browserPoint));
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return false;
+        }
+
+        return controller.onMouseDragged(button, copyBrowserPoint(browserPoint));
     }
 
     public void mouseScrolled(double surfaceX, double surfaceY, int amount, int rotation, int renderedWidth, int renderedHeight) {
-        inputController.onMouseScrolled(
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null) {
+            return;
+        }
+
+        controller.onMouseScrolled(
                 toBrowserPoint(surfaceX, surfaceY, renderedWidth, renderedHeight),
                 amount,
                 rotation
@@ -103,57 +147,92 @@ public final class BrowserSurfaceInputAdapter {
     }
 
     public boolean keyPressed(KeyEvent keyEvent) {
-        if (!focusUtil.isFocused()) {
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null || !focusUtil.isFocused()) {
             return false;
         }
 
-        inputController.onKeyPressed(keyEvent);
+        controller.onKeyPressed(keyEvent);
         return true;
     }
 
     public boolean keyReleased(KeyEvent keyEvent) {
-        if (!focusUtil.isFocused()) {
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null || !focusUtil.isFocused()) {
             return false;
         }
 
-        inputController.onKeyReleased(keyEvent);
+        controller.onKeyReleased(keyEvent);
         return true;
     }
 
     public boolean charTyped(CharacterEvent characterEvent) {
-        if (!focusUtil.isFocused()) {
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null || !focusUtil.isFocused()) {
             return false;
         }
 
-        inputController.onCharacterTyped(characterEvent);
+        controller.onCharacterTyped(characterEvent);
         return true;
     }
 
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (!focusUtil.isFocused()) {
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null || !focusUtil.isFocused()) {
             return false;
         }
 
-        inputController.onKeyPressed(keyCode, scanCode, modifiers);
+        controller.onKeyPressed(keyCode, scanCode, modifiers);
         return true;
     }
 
     public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
-        if (!focusUtil.isFocused()) {
+        GrapheneWebViewInputController controller = inputController();
+        if (controller == null || !focusUtil.isFocused()) {
             return false;
         }
 
-        inputController.onKeyReleased(keyCode, scanCode, modifiers);
+        controller.onKeyReleased(keyCode, scanCode, modifiers);
         return true;
     }
 
     public boolean charTyped(int codePoint, int modifiers) {
-        if (!focusUtil.isFocused()) {
+        GrapheneBrowser browser = surface.internalBrowser();
+        if (browser == null || !focusUtil.isFocused()) {
             return false;
         }
 
-        surface.internalBrowser().keyTyped((char) codePoint, modifiers);
+        browser.keyTyped((char) codePoint, modifiers);
         return true;
+    }
+
+    private GrapheneWebViewInputController inputController() {
+        if (inputController != null) {
+            return inputController;
+        }
+
+        GrapheneBrowser browser = surface.internalBrowser();
+        if (browser == null) {
+            return null;
+        }
+
+        inputController = new GrapheneWebViewInputController(
+                browser,
+                focusUtil,
+                surface.bridge(),
+                surface.allowsZoom(),
+                surface.allowsAltF4Close()
+        );
+        focusUtil.addFocusListener(inputController::onFocusChanged);
+        focusUtil.syncNativeFocus();
+        return inputController;
+    }
+
+    private void applyNativeFocus(boolean focused) {
+        GrapheneBrowser browser = surface.internalBrowser();
+        if (browser != null) {
+            browser.setFocus(focused);
+        }
     }
 
     private Point toBrowserPoint(double surfaceX, double surfaceY, int renderedWidth, int renderedHeight) {

@@ -13,14 +13,22 @@ import java.util.*;
 public final class BrowserSurfaceLoadListenerScope implements AutoCloseable {
     private static final String LOAD_LISTENER_NAME = "loadListener";
 
-    private final GrapheneBrowser browser;
     private final GrapheneLoadEventBus loadEventBus;
     private final Map<GrapheneLoadListener, GrapheneLoadListener> wrappedListenersByListener = new IdentityHashMap<>();
+    private volatile GrapheneBrowser browser;
     private boolean closed;
 
     public BrowserSurfaceLoadListenerScope(GrapheneBrowser browser, GrapheneLoadEventBus loadEventBus) {
+        this(loadEventBus);
         this.browser = Objects.requireNonNull(browser, "browser");
+    }
+
+    public BrowserSurfaceLoadListenerScope(GrapheneLoadEventBus loadEventBus) {
         this.loadEventBus = Objects.requireNonNull(loadEventBus, "loadEventBus");
+    }
+
+    public void bindBrowser(GrapheneBrowser browser) {
+        this.browser = Objects.requireNonNull(browser, "browser");
     }
 
     public BrowserSurface.Subscription subscribe(GrapheneLoadListener loadListener) {
@@ -88,7 +96,7 @@ public final class BrowserSurfaceLoadListenerScope implements AutoCloseable {
                     boolean canGoBack,
                     boolean canGoForward
             ) {
-                if (eventBrowser == browser) {
+                if (eventBrowser == browser && eventBrowser != null) {
                     loadListener.onLoadingStateChange(eventBrowser, isLoading, canGoBack, canGoForward);
                 }
             }
@@ -99,14 +107,14 @@ public final class BrowserSurfaceLoadListenerScope implements AutoCloseable {
                     CefFrame frame,
                     CefRequest.TransitionType transitionType
             ) {
-                if (eventBrowser == browser) {
+                if (eventBrowser == browser && eventBrowser != null) {
                     loadListener.onLoadStart(eventBrowser, frame, transitionType);
                 }
             }
 
             @Override
             public void onLoadEnd(CefBrowser eventBrowser, CefFrame frame, int httpStatusCode) {
-                if (eventBrowser == browser) {
+                if (eventBrowser == browser && eventBrowser != null) {
                     loadListener.onLoadEnd(eventBrowser, frame, httpStatusCode);
                 }
             }
@@ -119,7 +127,7 @@ public final class BrowserSurfaceLoadListenerScope implements AutoCloseable {
                     String errorText,
                     String failedUrl
             ) {
-                if (eventBrowser == browser) {
+                if (eventBrowser == browser && eventBrowser != null) {
                     loadListener.onLoadError(eventBrowser, frame, errorCode, errorText, failedUrl);
                 }
             }
