@@ -9,7 +9,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tytoo.grapheneui.api.config.*;
 import tytoo.grapheneui.api.runtime.GrapheneRuntime;
+import tytoo.grapheneui.internal.cef.GrapheneCefRuntime;
 import tytoo.grapheneui.internal.core.GrapheneCoreServices;
+import tytoo.grapheneui.internal.mc.McClient;
 import tytoo.grapheneui.internal.world.GrapheneWorldSurfaceManager;
 
 import java.nio.file.Path;
@@ -92,7 +94,7 @@ public final class GrapheneCore implements ClientModInitializer {
         return mergeGlobalConfig();
     }
 
-    public static synchronized boolean isInitialized() {
+    public static boolean isInitialized() {
         return SERVICES.runtimeInternal().isInitialized();
     }
 
@@ -236,7 +238,13 @@ public final class GrapheneCore implements ClientModInitializer {
         }
 
         registrationClosed = true;
-        SERVICES.runtimeInternal().initialize(mergeGlobalConfig(), snapshotContainerConfigs());
+        GrapheneCefRuntime runtime = SERVICES.runtimeInternal();
+        if (runtime.hasFailedStartup() && McClient.isOnMainThread()) {
+            runtime.initializeAsync(mergeGlobalConfig(), snapshotContainerConfigs());
+            throw new IllegalStateException("Graphene failed to start; retrying in the background");
+        }
+
+        runtime.initialize(mergeGlobalConfig(), snapshotContainerConfigs());
         LOGGER.info("Graphene initialized with {} registered consumer(s)", CONSUMERS.size());
     }
 

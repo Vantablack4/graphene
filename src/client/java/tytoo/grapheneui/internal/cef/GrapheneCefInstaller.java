@@ -80,14 +80,14 @@ public final class GrapheneCefInstaller {
         return resolvePlatformIdentifier();
     }
 
-    private static Path resolveInstallPath(GrapheneGlobalConfig config) {
+    static Path resolveInstallPath(GrapheneGlobalConfig config) {
         Path basePath = config.resolvedJcefDownloadPath().toAbsolutePath().normalize();
         String jcefMavenVersion = resolveJcefMavenVersion();
         String platformIdentifier = resolvePlatformIdentifier();
         return basePath.resolve(jcefMavenVersion).resolve(platformIdentifier).normalize();
     }
 
-    private static String resolveJcefMavenVersion() {
+    static String resolveJcefMavenVersion() {
         try {
             return readJcefMavenVersion();
         } catch (IOException | JsonParseException exception) {

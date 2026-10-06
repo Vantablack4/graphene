@@ -28,6 +28,7 @@ import tytoo.grapheneui.internal.mc.McClient;
 import tytoo.grapheneui.internal.platform.GraphenePlatform;
 
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -53,6 +54,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
     private final GrapheneLoadEventBus loadEventBus = new GrapheneLoadEventBus();
     private final GrapheneBridgeRuntime bridgeRuntime;
     private volatile boolean initialized;
+    private volatile boolean lastStartupFailed;
     private boolean shutdownInProgress;
     private boolean shutdownHookRegistered;
     private CefApp cefApp;
@@ -146,6 +148,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
                     }
                 }
 
+                lastStartupFailed = throwable != null;
                 if (throwable != null) {
                     LOGGER.error("Failed to initialize Graphene CEF runtime asynchronously", unwrapInitializationFailure(throwable));
                 }
@@ -228,6 +231,10 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
         return initialized;
     }
 
+    public boolean hasFailedStartup() {
+        return !initialized && lastStartupFailed;
+    }
+
     public void shutdown() {
         shutdownInternal(true, "client lifecycle");
     }
@@ -253,13 +260,22 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
         GrapheneNativeDownloadOverlay downloadOverlay = new GrapheneNativeDownloadOverlay(downloadState);
 
         try {
+            if (initialized) {
+                return;
+            }
+
+            GrapheneCefStartupProgressHandler progressHandler = new GrapheneCefStartupProgressHandler(
+                    downloadState,
+                    () -> showNativeDownloadOverlay(downloadOverlay)
+            );
+            CefAppBuilder cefAppBuilder = createConfiguredBuilder(globalConfig, progressHandler);
+            installNativeBundle(globalConfig, cefAppBuilder, progressHandler);
             synchronized (lock) {
                 if (!ensureCanInitialize()) {
                     return;
                 }
 
                 GrapheneHttpServerRuntime startedHttpServer = createHttpServerIfConfigured(containerConfigs);
-                CefAppBuilder cefAppBuilder = createConfiguredBuilder(globalConfig, downloadState, downloadOverlay);
                 buildCefApp(cefAppBuilder, startedHttpServer);
                 initializeClient(cefAppBuilder, startedHttpServer);
                 registerShutdownHook();
@@ -272,14 +288,10 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
 
     private CefAppBuilder createConfiguredBuilder(
             GrapheneGlobalConfig globalConfig,
-            GrapheneNativeDownloadState downloadState,
-            GrapheneNativeDownloadOverlay downloadOverlay
+            GrapheneCefStartupProgressHandler progressHandler
     ) {
         CefAppBuilder cefAppBuilder = GrapheneCefInstaller.createBuilder(globalConfig);
-        cefAppBuilder.setProgressHandler(new GrapheneCefStartupProgressHandler(
-                downloadState,
-                () -> showNativeDownloadOverlay(downloadOverlay)
-        ));
+        cefAppBuilder.setProgressHandler(progressHandler);
         logStartupConfiguration(cefAppBuilder);
         GrapheneCefAppHandler appHandler = new GrapheneCefAppHandler(globalConfig.fileSystemAccessMode());
         cefAppBuilder.setAppHandler(appHandler);
@@ -328,6 +340,31 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
         }
 
         return cause == null ? new IllegalStateException(FAILED_INITIALIZATION_MESSAGE) : cause;
+    }
+
+    private void installNativeBundle(
+            GrapheneGlobalConfig globalConfig,
+            CefAppBuilder cefAppBuilder,
+            GrapheneCefStartupProgressHandler progressHandler
+    ) {
+        Path installPath = GrapheneCefInstaller.resolveInstallPath(globalConfig);
+        if (GrapheneCefNativeBundleInstaller.isInstalled(installPath)) {
+            return;
+        }
+
+        try {
+            GrapheneCefNativeBundleInstaller.forCurrentPlatform(
+                    installPath,
+                    cefAppBuilder.getMirrors(),
+                    GrapheneCefInstaller.resolveJcefMavenVersion(),
+                    progressHandler
+            ).ensureInstalled();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(FAILED_INITIALIZATION_MESSAGE, exception);
+        } catch (IOException | UnsupportedPlatformException exception) {
+            throw new IllegalStateException(FAILED_INITIALIZATION_MESSAGE, exception);
+        }
     }
 
     private void buildCefApp(CefAppBuilder cefAppBuilder, GrapheneHttpServerRuntime startedHttpServer) {
