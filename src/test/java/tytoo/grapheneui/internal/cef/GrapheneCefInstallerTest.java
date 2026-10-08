@@ -16,13 +16,41 @@ final class GrapheneCefInstallerTest {
     }
 
     @Test
-    void linuxCompatibilityArgsKeepExistingSandboxAndNetworkHardening() {
+    void linuxCompatibilityArgsKeepSandboxAndPasswordStoreOverrides() {
         List<String> args = GrapheneCefInstaller.platformCompatibilityArgs(false, true, false);
 
         assertTrue(args.contains("--no-sandbox"));
         assertTrue(args.contains("--password-store=basic"));
-        assertTrue(args.contains("--disable-background-networking"));
         assertTrue(args.stream().noneMatch("--ozone-platform=x11"::equals));
+    }
+
+    @Test
+    void backgroundServiceArgsDisableChromeComponentSyncAndPingTraffic() {
+        List<String> args = GrapheneCefInstaller.backgroundServiceArgs();
+
+        assertTrue(args.contains("--disable-background-networking"));
+        assertTrue(args.contains("--disable-component-update"));
+        assertTrue(args.contains("--disable-domain-reliability"));
+        assertTrue(args.contains("--disable-sync"));
+        assertTrue(args.contains("--no-pings"));
+        assertEquals(
+                List.of("--disable-features=AutofillServerCommunication,MediaRouter,OptimizationHints,OptimizationTargetPrediction"),
+                args.stream().filter(arg -> arg.startsWith("--disable-features=")).toList()
+        );
+    }
+
+    @Test
+    void platformCompatibilityArgsNeverReplaceTheSharedDisabledFeatureList() {
+        List<List<String>> platformArgs = List.of(
+                GrapheneCefInstaller.platformCompatibilityArgs(true, false, false),
+                GrapheneCefInstaller.platformCompatibilityArgs(false, false, false),
+                GrapheneCefInstaller.platformCompatibilityArgs(false, true, false),
+                GrapheneCefInstaller.platformCompatibilityArgs(false, true, true, true)
+        );
+
+        for (List<String> args : platformArgs) {
+            assertTrue(args.stream().noneMatch(arg -> arg.startsWith("--disable-features")));
+        }
     }
 
     @Test

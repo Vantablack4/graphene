@@ -36,6 +36,24 @@ public final class GrapheneCefInstaller {
     private static final String JCEFGITHUB_VERSION_FIELD = "version";
     private static final String ALLOW_UNSAFE_SOFTWARE_WEBGL_PROPERTY =
             "graphene.cef.allowUnsafeSoftwareWebGl";
+    private static final List<String> DISABLED_CHROME_FEATURES = List.of(
+            "AutofillServerCommunication",
+            "MediaRouter",
+            "OptimizationHints",
+            "OptimizationTargetPrediction"
+    );
+    private static final List<String> BACKGROUND_SERVICE_ARGS = List.of(
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--disable-default-apps",
+            "--disable-domain-reliability",
+            "--disable-sync",
+            "--metrics-recording-only",
+            "--no-default-browser-check",
+            "--no-first-run",
+            "--no-pings",
+            "--disable-features=" + String.join(",", DISABLED_CHROME_FEATURES)
+    );
 
     private GrapheneCefInstaller() {
     }
@@ -51,9 +69,11 @@ public final class GrapheneCefInstaller {
         configureExtensionLoading(cefAppBuilder, validatedConfig);
         configureRemoteDebugging(cefAppBuilder, validatedConfig);
         configurePlatformCompatibility(cefAppBuilder);
+        cefAppBuilder.addJcefArgs(BACKGROUND_SERVICE_ARGS.toArray(String[]::new));
 
         try {
             Path cacheDirectory = Files.createDirectories(installPath.resolve("cache"));
+            GrapheneCefComponentCache.prune(cacheDirectory);
             String cachePath = cacheDirectory.toAbsolutePath().toString();
             cefAppBuilder.getCefSettings().cache_path = cachePath;
             cefAppBuilder.getCefSettings().root_cache_path = cachePath;
@@ -273,15 +293,7 @@ public final class GrapheneCefInstaller {
 
         List<String> args = new ArrayList<>(List.of(
                 "--no-sandbox",
-                "--password-store=basic",
-                "--disable-background-networking",
-                "--disable-component-update",
-                "--disable-domain-reliability",
-                "--disable-sync",
-                "--metrics-recording-only",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "--disable-features=MediaRouter,OptimizationHints,AutofillServerCommunication,CertificateTransparencyComponentUpdater,Translate"
+                "--password-store=basic"
         ));
 
         if (waylandSession) {
@@ -294,6 +306,10 @@ public final class GrapheneCefInstaller {
         }
 
         return args;
+    }
+
+    static List<String> backgroundServiceArgs() {
+        return BACKGROUND_SERVICE_ARGS;
     }
 
     private static int findRandomPort() {

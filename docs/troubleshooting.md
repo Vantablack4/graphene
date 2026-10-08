@@ -211,6 +211,24 @@ Fix:
 - Reduce long-running page tasks during shutdown.
 - Capture logs and reproduce with minimal UI.
 
+## DRM Video, `hyphens: auto` Or Speech Synthesis Missing
+
+Symptom:
+
+- Encrypted media never plays, `hyphens: auto` does not hyphenate, or a Chromium feature that needs a downloaded
+  data file stays unavailable.
+
+Likely cause:
+
+- Graphene starts CEF with Chromium's component updater, sync, background networking, domain reliability and
+  hyperlink-auditing pings disabled on every platform. Components such as WidevineCdm, hyphenation dictionaries and
+  the speech engine are never downloaded, and Graphene removes leftover component directories from
+  `<jcef-mvn-version>/<platform>/cache` at startup.
+
+Fix:
+
+- Design pages that do not depend on Chromium components. Bundle hyphenation or speech assets with the page instead.
+
 ---
 
 Next: [Testing](testing.md)
