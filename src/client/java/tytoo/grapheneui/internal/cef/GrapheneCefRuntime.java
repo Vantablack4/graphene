@@ -315,6 +315,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
             );
             CefAppBuilder cefAppBuilder = createConfiguredBuilder(globalConfig, progressHandler);
             installNativeBundle(globalConfig, cefAppBuilder, progressHandler);
+            loadCefFrameworkOnRenderThread(globalConfig);
             synchronized (lock) {
                 if (!ensureCanInitialize()) {
                     return;
@@ -391,6 +392,23 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
             throw new IllegalStateException(FAILED_INITIALIZATION_MESSAGE, exception);
         } catch (IOException | UnsupportedPlatformException exception) {
             throw new IllegalStateException(FAILED_INITIALIZATION_MESSAGE, exception);
+        }
+    }
+
+    private void loadCefFrameworkOnRenderThread(GrapheneGlobalConfig globalConfig) {
+        if (!GraphenePlatform.isMac()) {
+            return;
+        }
+
+        GrapheneCefFrameworkLoader.forRenderThread(
+                GrapheneCefInstaller.resolveInstallPath(globalConfig),
+                this::isStopping
+        ).load();
+    }
+
+    private boolean isStopping() {
+        synchronized (lock) {
+            return shutdownInProgress || clientStopping;
         }
     }
 

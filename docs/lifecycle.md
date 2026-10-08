@@ -21,6 +21,13 @@ Understanding Graphene lifecycle rules prevents stale bridge state and browser l
 - The HTTP server starts before the CEF natives download, so `httpAssets()` and `httpUrl(...)` resolve immediately and
   keep the same base URL across startup retries.
 - While the CEF natives download on first launch, Graphene shows a progress toast. It never blocks input.
+- On macOS, Graphene loads the CEF framework library with one short render-thread task (a few tens of milliseconds)
+  before CEF initializes in the background. Loading the framework briefly swaps the process malloc zone, and a
+  `free()` on another thread during the swap crashes the game. The render thread frees memory constantly while it
+  pumps window events, so the load runs on the render thread itself, and it waits until Minecraft's loading screen
+  is gone (at most two minutes) because the window-open animation, resource reload workers and the JIT free memory
+  constantly while it shows. CEF therefore finishes starting shortly after the title screen appears. A CEF helper
+  run first warms the system's library validation so the render-thread task stays short even on a cold start.
 
 If no consumer is registered, first Graphene usage fails with `IllegalStateException`.
 
