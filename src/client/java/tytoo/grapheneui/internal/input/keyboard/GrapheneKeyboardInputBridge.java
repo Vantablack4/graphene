@@ -79,6 +79,7 @@ public final class GrapheneKeyboardInputBridge {
         }
 
         CefKeyEvent cefEvent = createRawKeyEvent(
+                platformStrategy,
                 keyCode,
                 scanCode,
                 resolvedModifiers,
@@ -106,6 +107,7 @@ public final class GrapheneKeyboardInputBridge {
             boolean numLockEnabled
     ) {
         CefKeyEvent cefEvent = createRawKeyEvent(
+                platformStrategy,
                 glfwKeyCode,
                 scanCode,
                 modifiers,
@@ -134,7 +136,8 @@ public final class GrapheneKeyboardInputBridge {
         keyEventSink.accept(cefEvent);
     }
 
-    private CefKeyEvent createRawKeyEvent(
+    static CefKeyEvent createRawKeyEvent(
+            GrapheneKeyEventPlatformResolver platformStrategy,
             int keyCode,
             int scanCode,
             int modifiers,

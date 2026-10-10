@@ -25,6 +25,10 @@ final class GrapheneKeyboardMappings {
     private static final int WINDOWS_VK_OEM_102 = 0xE2;
     private static final int WINDOWS_VK_LWIN = 0x5B;
     private static final int WINDOWS_VK_RWIN = 0x5C;
+    private static final int WINDOWS_VK_SNAPSHOT = 0x2C;
+    private static final int WINDOWS_VK_INSERT = 0x2D;
+    private static final int WINDOWS_VK_DELETE = 0x2E;
+    private static final int WINDOWS_VK_OEM_NEC_EQUAL = 0x92;
 
     private static final int[][] WINDOWS_VK_FROM_GLFW = {
             {GLFW.GLFW_KEY_BACKSPACE, KeyEvent.VK_BACK_SPACE},
@@ -64,7 +68,7 @@ final class GrapheneKeyboardMappings {
             {GLFW.GLFW_KEY_WORLD_2, WINDOWS_VK_OEM_102},
             {GLFW.GLFW_KEY_ESCAPE, KeyEvent.VK_ESCAPE},
             {GLFW.GLFW_KEY_SPACE, KeyEvent.VK_SPACE},
-            {GLFW.GLFW_KEY_INSERT, KeyEvent.VK_INSERT},
+            {GLFW.GLFW_KEY_INSERT, WINDOWS_VK_INSERT},
             {GLFW.GLFW_KEY_LEFT, KeyEvent.VK_LEFT},
             {GLFW.GLFW_KEY_RIGHT, KeyEvent.VK_RIGHT},
             {GLFW.GLFW_KEY_UP, KeyEvent.VK_UP},
@@ -72,9 +76,9 @@ final class GrapheneKeyboardMappings {
             {GLFW.GLFW_KEY_CAPS_LOCK, KeyEvent.VK_CAPS_LOCK},
             {GLFW.GLFW_KEY_SCROLL_LOCK, KeyEvent.VK_SCROLL_LOCK},
             {GLFW.GLFW_KEY_NUM_LOCK, KeyEvent.VK_NUM_LOCK},
-            {GLFW.GLFW_KEY_PRINT_SCREEN, KeyEvent.VK_PRINTSCREEN},
+            {GLFW.GLFW_KEY_PRINT_SCREEN, WINDOWS_VK_SNAPSHOT},
             {GLFW.GLFW_KEY_PAUSE, KeyEvent.VK_PAUSE},
-            {GLFW.GLFW_KEY_DELETE, KeyEvent.VK_DELETE},
+            {GLFW.GLFW_KEY_DELETE, WINDOWS_VK_DELETE},
             {GLFW.GLFW_KEY_HOME, KeyEvent.VK_HOME},
             {GLFW.GLFW_KEY_END, KeyEvent.VK_END},
             {GLFW.GLFW_KEY_PAGE_UP, KeyEvent.VK_PAGE_UP},
@@ -106,7 +110,7 @@ final class GrapheneKeyboardMappings {
             {GLFW.GLFW_KEY_KP_MULTIPLY, KeyEvent.VK_MULTIPLY},
             {GLFW.GLFW_KEY_KP_SUBTRACT, KeyEvent.VK_SUBTRACT},
             {GLFW.GLFW_KEY_KP_ADD, KeyEvent.VK_ADD},
-            {GLFW.GLFW_KEY_KP_EQUAL, KeyEvent.VK_EQUALS}
+            {GLFW.GLFW_KEY_KP_EQUAL, WINDOWS_VK_OEM_NEC_EQUAL}
     };
     private static final Map<Integer, Integer> WINDOWS_VK_BY_GLFW = createByFirstColumn(WINDOWS_VK_FROM_GLFW, 1);
     private static final int[][] WINDOWS_VK_FROM_CHARACTER = {
