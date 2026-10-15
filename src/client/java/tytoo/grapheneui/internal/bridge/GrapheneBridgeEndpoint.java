@@ -22,6 +22,7 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
     private static final String CHANNEL_NAME = "channel";
     private static final String COALESCING_KEY_NAME = "coalescingKey";
     private static final String TIMEOUT_NAME = "timeout";
+    private static final String SCRIPT_NAME = "script";
     private static final long BOOTSTRAP_FALLBACK_RETRY_NANOS = TimeUnit.MILLISECONDS.toNanos(500);
 
     private final GrapheneBridgeOptions options;
@@ -157,6 +158,22 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
             );
         });
         return requestLifecycle.request(validatedChannel, payloadJson, validatedTimeout);
+    }
+
+    public CompletableFuture<String> evaluate(String script, Duration timeout) {
+        Objects.requireNonNull(script, SCRIPT_NAME);
+        Duration validatedTimeout = validateTimeout(timeout);
+        ensureOpen();
+        GrapheneBrowser boundBrowser = browser;
+        if (boundBrowser == null || !isReady()) {
+            return CompletableFuture.failedFuture(new IllegalStateException("Bridge is not ready"));
+        }
+
+        return requestLifecycle.evaluate(
+                script,
+                validatedTimeout,
+                evaluationScript -> boundBrowser.executeScript(evaluationScript, boundBrowser.currentUrl())
+        );
     }
 
     public boolean isClosed() {

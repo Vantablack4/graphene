@@ -24,4 +24,24 @@ final class BrowserSurfaceViewportMapperTest {
 
         assertEquals(77, mappedCoordinate);
     }
+
+    @Test
+    void unmapCoordinateReturnsZeroWhenSizesAreInvalid() {
+        assertEquals(0.0, BrowserSurfaceViewportMapper.unmapCoordinate(10.0, 0, 5, 100));
+        assertEquals(0.0, BrowserSurfaceViewportMapper.unmapCoordinate(10.0, 100, 5, 0));
+    }
+
+    @Test
+    void unmapCoordinateScalesSourceCoordinateBackToRenderedRange() {
+        assertEquals(50.0, BrowserSurfaceViewportMapper.unmapCoordinate(110.0, 100, 10, 200));
+    }
+
+    @Test
+    void unmappedCoordinatesMapBackToTheSameSourcePixel() {
+        for (int sourceCoordinate = 10; sourceCoordinate < 210; sourceCoordinate++) {
+            double renderedCoordinate = BrowserSurfaceViewportMapper.unmapCoordinate(sourceCoordinate + 0.5, 130, 10, 200);
+
+            assertEquals(sourceCoordinate, BrowserSurfaceViewportMapper.mapCoordinate(renderedCoordinate, 130, 10, 200));
+        }
+    }
 }

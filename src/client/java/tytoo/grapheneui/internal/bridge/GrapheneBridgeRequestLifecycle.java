@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 final class GrapheneBridgeRequestLifecycle {
     private static final GrapheneDebugLogger DEBUG_LOGGER = GrapheneDebugLogger.of(GrapheneBridgeRequestLifecycle.class);
@@ -51,6 +52,26 @@ final class GrapheneBridgeRequestLifecycle {
         return responseFuture;
     }
 
+    CompletableFuture<String> evaluate(String script, Duration timeout, Consumer<String> scriptRunner) {
+        String requestId = "java-eval-" + requestSequence.incrementAndGet();
+        CompletableFuture<String> responseFuture = pendingRequests.register(requestId, timeout);
+        DEBUG_LOGGER.debug(
+                "Registered bridge evaluation id={} timeoutMs={} scriptSize={}",
+                requestId,
+                timeout.toMillis(),
+                script.length()
+        );
+
+        try {
+            scriptRunner.accept(evaluationScript(requestId, script));
+        } catch (RuntimeException exception) {
+            pendingRequests.completeFailure(requestId, exception);
+            DEBUG_LOGGER.debug("Failed to run bridge evaluation id={} reason={}", requestId, exception.getMessage());
+        }
+
+        return responseFuture;
+    }
+
     void failAllForPageChange() {
         DEBUG_LOGGER.debug("Failing all pending bridge requests because page changed");
         pendingRequests.failAll(new IllegalStateException("Bridge page changed before a response was received"));
@@ -77,5 +98,13 @@ final class GrapheneBridgeRequestLifecycle {
 
         pendingRequests.completeSuccess(packet.id, codec.payloadToJson(packet.payload));
         DEBUG_LOGGER.debug("Completed bridge request as success id={} channel={}", packet.id, packet.channel);
+    }
+
+    private String evaluationScript(String requestId, String script) {
+        return "window." + GrapheneBridgeProtocol.EVALUATE_FUNCTION_NAME + "("
+                + codec.quoteJsString(requestId) + ", "
+                + codec.quoteJsString(GrapheneBridgeProtocol.EVALUATE_CHANNEL) + ", async function () {\n"
+                + script
+                + "\n});";
     }
 }

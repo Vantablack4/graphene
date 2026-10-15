@@ -27,8 +27,10 @@ import tytoo.grapheneui.internal.mc.McWindowScale;
 import tytoo.grapheneui.internal.nativeui.GrapheneNativeSlotRegistry;
 
 import java.awt.*;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 /**
@@ -148,6 +150,19 @@ public final class BrowserSurface implements AutoCloseable {
 
     public GrapheneBridge bridge() {
         return bridge;
+    }
+
+    /**
+     * Runs {@code script} in the current page as the body of an async function and completes with its
+     * {@code return} value as JSON. The page's bridge must be ready; the future fails if it is not, if the
+     * script throws, if the page navigates away, or after {@code timeout}.
+     */
+    public CompletableFuture<String> evaluate(String script, Duration timeout) {
+        return bridge.evaluate(script, timeout);
+    }
+
+    public CompletableFuture<String> evaluate(String script) {
+        return evaluate(script, GrapheneBridge.DEFAULT_REQUEST_TIMEOUT);
     }
 
     public GrapheneNativeSlots nativeSlots() {
@@ -357,6 +372,14 @@ public final class BrowserSurface implements AutoCloseable {
 
     public int toBrowserY(double surfaceY, int renderedHeight) {
         return sizingState.toBrowserY(surfaceY, renderedHeight);
+    }
+
+    public double toSurfaceX(double browserX, int renderedWidth) {
+        return sizingState.toSurfaceX(browserX, renderedWidth);
+    }
+
+    public double toSurfaceY(double browserY, int renderedHeight) {
+        return sizingState.toSurfaceY(browserY, renderedHeight);
     }
 
     public void render(GuiGraphicsExtractor graphics, int x, int y) {

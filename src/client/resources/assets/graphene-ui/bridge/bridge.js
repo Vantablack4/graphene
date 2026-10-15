@@ -9,6 +9,7 @@ const GRAPHENE_ERROR_HANDLER_FAILURE = "js_handler_error";
 const GRAPHENE_ERROR_INVALID_RESPONSE = "invalid_response";
 const GRAPHENE_INSTALLED_FLAG = "__grapheneInstalled";
 const GRAPHENE_RECEIVE_FN_NAME = "__grapheneBridgeReceiveFromJava";
+const GRAPHENE_EVALUATE_FN_NAME = "__grapheneBridgeEvaluate";
 const GRAPHENE_POPUP_FALLBACK_INSTALLED_FLAG = "__graphenePopupFallbackInstalled";
 const GRAPHENE_SHARED_STATE_NAME = "__grapheneBridgeSharedState";
 const GRAPHENE_READY_RETRY_DELAY_MS = 50;
@@ -352,6 +353,20 @@ function grapheneBridgeHandleRequest(message) {
         .catch(grapheneBridgeNoop);
 }
 
+function grapheneBridgeEvaluate(id, channel, evaluation) {
+    const message = {id: id, channel: channel};
+    Promise.resolve()
+        .then(evaluation)
+        .then(function (result) {
+            return grapheneBridgeSendToJava(grapheneBridgeCreateSuccessResponse(message, result));
+        })
+        .catch(function (error) {
+            const messageText = error?.message ?? String(error);
+            return grapheneBridgeSendToJava(grapheneBridgeCreateErrorResponse(message, GRAPHENE_ERROR_HANDLER_FAILURE, messageText));
+        })
+        .catch(grapheneBridgeNoop);
+}
+
 function grapheneBridgeReceiveFromJava(messageJson) {
     const message = grapheneBridgeParseJsonOrNull(messageJson);
     if (!grapheneBridgeIsMessage(message)) {
@@ -370,6 +385,7 @@ function grapheneBridgeReceiveFromJava(messageJson) {
 
 function grapheneBridgeInstallApi() {
     globalThis[GRAPHENE_RECEIVE_FN_NAME] = grapheneBridgeReceiveFromJava;
+    globalThis[GRAPHENE_EVALUATE_FN_NAME] = grapheneBridgeEvaluate;
 
     const grapheneBridgeApi = {
         __grapheneInstalled: true,

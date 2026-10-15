@@ -14,4 +14,12 @@ final class BrowserSurfaceViewportMapper {
         int maxCoordinate = sourceStart + sourceSize - 1;
         return Math.clamp(mappedCoordinate, sourceStart, maxCoordinate);
     }
+
+    static double unmapCoordinate(double coordinate, int renderedSize, int sourceStart, int sourceSize) {
+        if (renderedSize <= 0 || sourceSize <= 0) {
+            return 0.0;
+        }
+
+        return (coordinate - sourceStart) * renderedSize / sourceSize;
+    }
 }

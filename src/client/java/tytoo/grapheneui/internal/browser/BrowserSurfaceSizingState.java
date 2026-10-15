@@ -177,6 +177,14 @@ public final class BrowserSurfaceSizingState {
         return BrowserSurfaceViewportMapper.mapCoordinate(surfaceY, renderedHeight, viewBox.y, viewBox.height);
     }
 
+    public double toSurfaceX(double browserX, int renderedWidth) {
+        return BrowserSurfaceViewportMapper.unmapCoordinate(browserX, renderedWidth, viewBox.x, viewBox.width);
+    }
+
+    public double toSurfaceY(double browserY, int renderedHeight) {
+        return BrowserSurfaceViewportMapper.unmapCoordinate(browserY, renderedHeight, viewBox.y, viewBox.height);
+    }
+
     private void setResolutionInternal(int width, int height) {
         this.resolutionWidth = requirePositive(width, "resolutionWidth");
         this.resolutionHeight = requirePositive(height, "resolutionHeight");

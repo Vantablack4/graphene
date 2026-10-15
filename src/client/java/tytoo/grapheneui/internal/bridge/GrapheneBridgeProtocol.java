@@ -8,6 +8,8 @@ final class GrapheneBridgeProtocol {
     static final String KIND_REQUEST = "request";
     static final String KIND_RESPONSE = "response";
     static final String EMPTY_RESPONSE_JSON = "{}";
+    static final String EVALUATE_CHANNEL = "graphene:evaluate";
+    static final String EVALUATE_FUNCTION_NAME = "__grapheneBridgeEvaluate";
 
     private GrapheneBridgeProtocol() {
     }
