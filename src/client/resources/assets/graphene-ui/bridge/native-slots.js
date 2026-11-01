@@ -638,17 +638,83 @@
         };
     }
 
+    /**
+     * The part of the viewport a slot may draw into: the padding boxes of every ancestor that clips
+     * its overflow (a scrolling list, a panel with overflow hidden), intersected. Null when nothing
+     * clips the slot; an empty rect when an ancestor hides it completely.
+     */
+    function grapheneNativeSlotsClipRect(element) {
+        if (typeof globalThis.getComputedStyle !== "function") {
+            return null;
+        }
+
+        let left = -Infinity;
+        let top = -Infinity;
+        let right = Infinity;
+        let bottom = Infinity;
+        let clipped = false;
+        for (let node = element.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+            const style = globalThis.getComputedStyle(node);
+            if (style.overflowX === "visible" && style.overflowY === "visible") {
+                continue;
+            }
+
+            const box = node.getBoundingClientRect();
+            // The client metrics are in the node's own CSS pixels, the box in the viewport's: under
+            // CSS zoom (Graphene zooms the root by the GUI Scale) the two differ by the zoom.
+            const scaleX = node.offsetWidth > 0 ? box.width / node.offsetWidth : 1;
+            const scaleY = node.offsetHeight > 0 ? box.height / node.offsetHeight : 1;
+            // The padding box: inside the borders, and left of a vertical scrollbar.
+            const boxLeft = box.left + node.clientLeft * scaleX;
+            const boxTop = box.top + node.clientTop * scaleY;
+            if (style.overflowX !== "visible") {
+                left = Math.max(left, boxLeft);
+                right = Math.min(right, boxLeft + node.clientWidth * scaleX);
+            }
+            if (style.overflowY !== "visible") {
+                top = Math.max(top, boxTop);
+                bottom = Math.min(bottom, boxTop + node.clientHeight * scaleY);
+            }
+            clipped = true;
+        }
+
+        if (!clipped) {
+            return null;
+        }
+
+        // An unbounded axis stays within the page; the game clips to its surface as well.
+        left = Number.isFinite(left) ? left : 0;
+        top = Number.isFinite(top) ? top : 0;
+        right = Number.isFinite(right) ? right : left + 1e6;
+        bottom = Number.isFinite(bottom) ? bottom : top + 1e6;
+        return grapheneNativeSlotsRectSnapshot({
+            x: left,
+            y: top,
+            left: left,
+            top: top,
+            right: Math.max(left, right),
+            bottom: Math.max(top, bottom),
+            width: Math.max(0, right - left),
+            height: Math.max(0, bottom - top)
+        });
+    }
+
     function grapheneNativeSlotsMeasureRecord(record) {
         const element = record.element;
         const attached = grapheneNativeSlotsIsElement(element);
         const connected = attached && Boolean(element.isConnected);
         let rect = null;
+        let clip = null;
         let hasArea = false;
 
         if (connected) {
             try {
                 rect = grapheneNativeSlotsRectSnapshot(element.getBoundingClientRect());
-                hasArea = rect.width > 0 && rect.height > 0;
+                clip = grapheneNativeSlotsClipRect(element);
+                hasArea = rect.width > 0 && rect.height > 0
+                    && (clip === null || (clip.width > 0 && clip.height > 0
+                        && rect.right > clip.left && rect.left < clip.right
+                        && rect.bottom > clip.top && rect.top < clip.bottom));
             } catch (error) {
                 grapheneNativeSlotsReportSuppressedError("Slot measurement failed for '" + record.id + "'", error);
                 rect = null;
@@ -668,7 +734,8 @@
             connected: connected,
             visible: visible,
             intersectionRatio: intersection ? grapheneNativeSlotsRoundNumber(intersection.ratio) : null,
-            rect: rect
+            rect: rect,
+            clip: clip
         };
     }
 

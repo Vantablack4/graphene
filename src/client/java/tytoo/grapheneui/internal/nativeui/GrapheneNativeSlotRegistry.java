@@ -157,8 +157,18 @@ public final class GrapheneNativeSlotRegistry implements GrapheneNativeSlots {
                     continue;
                 }
 
+                // A slot inside a scrolling list draws only where the list shows it.
+                GrapheneNativeSlotScreenRect visibleBounds = bounds;
+                if (slot.clip() != null) {
+                    GrapheneNativeSlotScreenRect clip = GrapheneNativeSlotBoundsMapper.mapClip(slot.clip(), viewport, target);
+                    visibleBounds = clip == null ? null : bounds.intersect(clip);
+                    if (visibleBounds == null) {
+                        continue;
+                    }
+                }
+
                 try {
-                    renderer.render(new GrapheneNativeSlotRenderContext(graphics, slot, bounds, pointer()));
+                    renderer.render(new GrapheneNativeSlotRenderContext(graphics, slot, bounds, visibleBounds, pointer()));
                 } catch (RuntimeException exception) {
                     DEBUG_LOGGER.debug("Native slot renderer failed slotId={} kind={}", slot.id(), slot.kind(), exception);
                 }

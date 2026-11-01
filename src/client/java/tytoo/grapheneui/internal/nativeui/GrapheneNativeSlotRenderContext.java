@@ -10,17 +10,20 @@ final class GrapheneNativeSlotRenderContext {
     private final GuiGraphicsExtractor graphics;
     private final GrapheneNativeSlot slot;
     private final GrapheneNativeSlotScreenRect bounds;
+    private final GrapheneNativeSlotScreenRect visibleBounds;
     private final GrapheneNativeSlotPointer pointer;
 
     GrapheneNativeSlotRenderContext(
             GuiGraphicsExtractor graphics,
             GrapheneNativeSlot slot,
             GrapheneNativeSlotScreenRect bounds,
+            GrapheneNativeSlotScreenRect visibleBounds,
             GrapheneNativeSlotPointer pointer
     ) {
         this.graphics = graphics;
         this.slot = slot;
         this.bounds = bounds;
+        this.visibleBounds = visibleBounds;
         this.pointer = pointer;
     }
 
@@ -52,8 +55,13 @@ final class GrapheneNativeSlotRenderContext {
         return slot.handoffOptions();
     }
 
+    /** The part of {@link #bounds()} the page shows: smaller when a scrolling ancestor cuts the slot. */
+    GrapheneNativeSlotScreenRect visibleBounds() {
+        return visibleBounds;
+    }
+
     boolean hasPointerInside() {
-        return pointer.available() && bounds.contains(pointer.x(), pointer.y());
+        return pointer.available() && visibleBounds.contains(pointer.x(), pointer.y());
     }
 
     boolean pointerAvailable() {
@@ -69,7 +77,7 @@ final class GrapheneNativeSlotRenderContext {
     }
 
     void withScissor(Runnable renderAction) {
-        graphics.enableScissor(bounds.x(), bounds.y(), bounds.right(), bounds.bottom());
+        graphics.enableScissor(visibleBounds.x(), visibleBounds.y(), visibleBounds.right(), visibleBounds.bottom());
         try {
             renderAction.run();
         } finally {

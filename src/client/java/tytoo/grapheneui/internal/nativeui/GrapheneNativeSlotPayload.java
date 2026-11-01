@@ -12,6 +12,7 @@ final class GrapheneNativeSlotPayload {
     Boolean connected;
     Boolean visible;
     RectPayload rect;
+    RectPayload clip;
 
     static final class RectPayload {
         Double x;
