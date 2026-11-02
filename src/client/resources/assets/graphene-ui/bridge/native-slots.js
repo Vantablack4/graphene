@@ -653,8 +653,11 @@
         let right = Infinity;
         let bottom = Infinity;
         let clipped = false;
-        for (let node = element.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+        // A fixed box escapes the overflow of everything above it. The body's overflow belongs to the viewport.
+        let escaped = globalThis.getComputedStyle(element).position === "fixed";
+        for (let node = element.parentElement; node && !escaped && node !== document.body && node !== document.documentElement; node = node.parentElement) {
             const style = globalThis.getComputedStyle(node);
+            escaped = style.position === "fixed";
             if (style.overflowX === "visible" && style.overflowY === "visible") {
                 continue;
             }
