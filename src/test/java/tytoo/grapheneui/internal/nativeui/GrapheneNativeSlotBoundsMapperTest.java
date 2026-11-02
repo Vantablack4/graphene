@@ -53,6 +53,43 @@ final class GrapheneNativeSlotBoundsMapperTest {
     }
 
     @Test
+    void mapClipRoundsInwardWhereMapRoundsOutward() {
+        GrapheneNativeSlotDomRect rect = new GrapheneNativeSlotDomRect(10.5, 20.5, 30.5, 40.5, 20.0, 20.0);
+        GrapheneNativeSlotViewport viewport = new GrapheneNativeSlotViewport(100.0, 100.0, 0.0, 0.0);
+        GrapheneNativeSlotRenderTarget target = new GrapheneNativeSlotRenderTarget(0, 0, 100, 100, 100, 100, 0, 0, 100, 100);
+
+        assertEquals(new GrapheneNativeSlotScreenRect(10, 20, 21, 21), GrapheneNativeSlotBoundsMapper.map(rect, viewport, target));
+        assertEquals(new GrapheneNativeSlotScreenRect(11, 21, 19, 19), GrapheneNativeSlotBoundsMapper.mapClip(rect, viewport, target));
+    }
+
+    @Test
+    void slotKeepsItsClipFromThePayload() {
+        GrapheneNativeSlotPayload payload = new GrapheneNativeSlotPayload();
+        payload.id = "head";
+        payload.rect = new GrapheneNativeSlotPayload.RectPayload();
+        payload.rect.left = 0.0;
+        payload.rect.top = 0.0;
+        payload.rect.width = 10.0;
+        payload.rect.height = 10.0;
+        payload.clip = new GrapheneNativeSlotPayload.RectPayload();
+        payload.clip.left = 0.0;
+        payload.clip.top = 4.0;
+        payload.clip.width = 10.0;
+        payload.clip.height = 20.0;
+
+        GrapheneNativeSlot slot = GrapheneNativeSlot.fromPayload(payload);
+
+        assertEquals(new GrapheneNativeSlotDomRect(0.0, 4.0, 10.0, 24.0, 10.0, 20.0), slot.clip());
+        assertNull(GrapheneNativeSlot.fromPayload(withoutClip()).clip());
+    }
+
+    private static GrapheneNativeSlotPayload withoutClip() {
+        GrapheneNativeSlotPayload payload = new GrapheneNativeSlotPayload();
+        payload.id = "head";
+        return payload;
+    }
+
+    @Test
     void mapDomRectToScreenRectHidesEmptyRects() {
         GrapheneNativeSlotScreenRect mapped = GrapheneNativeSlotBoundsMapper.map(
                 new GrapheneNativeSlotDomRect(10.0, 10.0, 10.0, 20.0, 0.0, 10.0),

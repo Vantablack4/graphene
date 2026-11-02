@@ -11,6 +11,7 @@ final class GrapheneNativeSlot {
     private final JsonObject renderOptions;
     private final JsonObject handoffOptions;
     private final GrapheneNativeSlotDomRect rect;
+    private final GrapheneNativeSlotDomRect clip;
     private final boolean visible;
 
     private GrapheneNativeSlot(
@@ -20,6 +21,7 @@ final class GrapheneNativeSlot {
             JsonObject renderOptions,
             JsonObject handoffOptions,
             GrapheneNativeSlotDomRect rect,
+            GrapheneNativeSlotDomRect clip,
             boolean visible
     ) {
         this.id = id;
@@ -28,6 +30,7 @@ final class GrapheneNativeSlot {
         this.renderOptions = renderOptions;
         this.handoffOptions = handoffOptions;
         this.rect = rect;
+        this.clip = clip;
         this.visible = visible;
     }
 
@@ -47,6 +50,7 @@ final class GrapheneNativeSlot {
                 GrapheneNativeSlotJson.object(payload.render),
                 GrapheneNativeSlotJson.object(payload.handoff),
                 GrapheneNativeSlotDomRect.fromPayload(payload.rect),
+                GrapheneNativeSlotDomRect.fromPayload(payload.clip),
                 attached && connected && visible
         );
     }
@@ -73,6 +77,11 @@ final class GrapheneNativeSlot {
 
     GrapheneNativeSlotDomRect rect() {
         return rect;
+    }
+
+    /** Where the page lets the slot draw (its clipping ancestors, intersected), or null for anywhere. */
+    GrapheneNativeSlotDomRect clip() {
+        return clip;
     }
 
     boolean shouldRender() {

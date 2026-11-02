@@ -54,6 +54,11 @@ public final class GrapheneCefInstaller {
             "--no-pings",
             "--disable-features=" + String.join(",", DISABLED_CHROME_FEATURES)
     );
+    // Pages are composited over the game, so subpixel (LCD) antialiasing only adds colour
+    // fringes to pixel fonts; grayscale antialiasing keeps glyph edges neutral.
+    private static final List<String> RENDERING_ARGS = List.of(
+            "--disable-lcd-text"
+    );
 
     private GrapheneCefInstaller() {
     }
@@ -70,6 +75,7 @@ public final class GrapheneCefInstaller {
         configureRemoteDebugging(cefAppBuilder, validatedConfig);
         configurePlatformCompatibility(cefAppBuilder);
         cefAppBuilder.addJcefArgs(BACKGROUND_SERVICE_ARGS.toArray(String[]::new));
+        cefAppBuilder.addJcefArgs(RENDERING_ARGS.toArray(String[]::new));
 
         try {
             Path cacheDirectory = Files.createDirectories(installPath.resolve("cache"));
