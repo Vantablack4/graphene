@@ -183,6 +183,18 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
 
     public void onPageLoadStart() {
         onNavigationRequested();
+        if (closed.get()) {
+            return;
+        }
+
+        // Pages poll for the bridge while their scripts run. It installs before they do when it arrives now, instead
+        // of at load end, which waits for every stylesheet and font.
+        try {
+            injectBootstrapScript();
+        } catch (RuntimeException exception) {
+            DEBUG_LOGGER.debug("Bridge bootstrap injection failed on load start browserId={}", browserIdentifier(), exception);
+            // Load end and the render fallback inject it again.
+        }
     }
 
     public void onNavigationRequested() {
