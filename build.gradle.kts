@@ -135,7 +135,6 @@ val openTimingPageDir = providers.gradleProperty("openTimingPageDir")
 	.orElse("../mod-characters/src/client/resources/assets/mod_characters/web/character-card")
 tasks.named<ProcessResources>("processGametestResources") {
 	val pageDir = file(openTimingPageDir.get())
-	inputs.dir(pageDir).optional()
 	if (pageDir.isDirectory) {
 		from(pageDir) {
 			into("assets/graphene_gametest/web/karakter")
