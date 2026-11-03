@@ -20,12 +20,14 @@ import java.util.concurrent.CompletableFuture;
  */
 final class OpenTimingScreen extends Screen {
     private static final String INIT_CHANNEL = "vb:character-card:init";
+    private static final String LAYOUT_CHANNEL = "vb:character-card:layout";
     private static final double CSS_PIXELS_PER_GUI_PIXEL = 2.0D;
 
     private final String pagePath;
     private final String cardJson;
     private final List<GrapheneBridgeSubscription> subscriptions = new ArrayList<>();
     private GrapheneWebViewWidget webView;
+    private volatile String lastLayoutJson;
 
     OpenTimingScreen(String pagePath, String cardJson) {
         super(Component.literal("Open timing"));
@@ -48,6 +50,7 @@ final class OpenTimingScreen extends Screen {
                     graphene.appAssets().asset(pagePath),
                     surfaceConfig()
             );
+            subscriptions.add(webView.bridge().onEvent(LAYOUT_CHANNEL, (ignoredChannel, payload) -> lastLayoutJson = payload));
             subscriptions.add(webView.bridge().onReady(() -> webView.bridge().emit(INIT_CHANNEL, cardJson)));
             subscriptions.add(webView.bridge().onRequest(
                     INIT_CHANNEL,
@@ -82,6 +85,10 @@ final class OpenTimingScreen extends Screen {
 
     GrapheneWebViewWidget webView() {
         return webView;
+    }
+
+    String lastLayoutJson() {
+        return lastLayoutJson;
     }
 
     private static BrowserSurfaceConfig surfaceConfig() {

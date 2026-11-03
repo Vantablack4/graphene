@@ -195,6 +195,14 @@ public final class BrowserSurface implements AutoCloseable {
         return !closed && ensureBrowser();
     }
 
+    /**
+     * Returns whether the browser has painted anything but fully transparent pixels yet. Stays {@code true} afterwards.
+     */
+    public boolean hasVisibleContent() {
+        GrapheneBrowser activeBrowser = browser;
+        return activeBrowser != null && activeBrowser.hasVisibleContent();
+    }
+
     public boolean canGoBack() {
         GrapheneBrowser activeBrowser = browser;
         return activeBrowser != null && activeBrowser.canGoBack();

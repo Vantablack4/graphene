@@ -43,6 +43,9 @@ public final class OpenTimingClientGameTest implements FabricClientGameTest {
     private static final int TICKS_BETWEEN_OPENS = 60;
     private static final int MAIN_THREAD_SETTLE_TICKS = 30;
     private static final int IDLE_TICKS = 600;
+    private static final double MARK_TOLERANCE_MILLIS = 5.0D;
+    private static final double HOLD_LIMIT_MILLIS = 800.0D;
+    private static final double CSS_PIXELS_PER_GUI_PIXEL = 2.0D;
     private static final List<String> ROW_MARKS = List.of(
             "screen.frame",
             "background.first",
@@ -142,6 +145,10 @@ public final class OpenTimingClientGameTest implements FabricClientGameTest {
             }
 
             captureFrames(context, screenshots, primaryPage);
+            if (karakterAvailable) {
+                checkScreenOverScreenKeepsItsBackground(context, primaryPage);
+                checkLayoutFollowsTheWindow(context, screenshots);
+            }
             closeScreen(context);
             GrapheneOpenTrace.install(null);
             report.add("memory at the end:");
@@ -198,6 +205,9 @@ public final class OpenTimingClientGameTest implements FabricClientGameTest {
             if (mark.name().equals("resource.read")) {
                 open.resources().add(String.format(Locale.ROOT, "%.1f %s", (mark.nanos() - start[0]) / 1_000_000.0D, mark.detail()));
             }
+            if (mark.name().equals("screen.frame") && mark.nanos() <= frameContent) {
+                open.frameTimes().add((long) ((mark.nanos() - start[0]) / 1_000_000.0D));
+            }
         }
         open.markTimes().put("frame.content", (frameContent - start[0]) / 1_000_000.0D);
 
@@ -218,7 +228,91 @@ public final class OpenTimingClientGameTest implements FabricClientGameTest {
 
         report.add(open.describe());
         System.out.println("OPEN_TIMING " + open.describe());
+        assertWorldNeverBlursBeforeThePage(open);
         return open;
+    }
+
+    /** Over the world the blur comes with the page, on the same frame, unless the page took longer than the limit. */
+    private static void assertWorldNeverBlursBeforeThePage(Open open) {
+        double background = open.markTimes().get("background.first");
+        double content = open.markTimes().get("paint.content");
+        if (background + MARK_TOLERANCE_MILLIS < content && content < HOLD_LIMIT_MILLIS) {
+            throw new AssertionError("The world blurred " + (content - background) + " ms before the page painted: " + open.describe());
+        }
+    }
+
+    /** A screen opened from another screen must not flash the sharp world between the two. */
+    private void checkScreenOverScreenKeepsItsBackground(ClientGameTestContext context, String page) {
+        marks.clear();
+        GrapheneOpenTrace.install(this::onMark);
+        long[] start = new long[1];
+        context.runOnClient(client -> {
+            start[0] = System.nanoTime();
+            client.setScreen(new OpenTimingScreen(page, CARD_JSON));
+        });
+        for (int tick = 0; tick < 4 && firstMarkFor("background.first") == null; tick++) {
+            context.waitTick();
+        }
+
+        Mark background = firstMarkFor("background.first");
+        if (background == null || background.nanos() - start[0] > TimeUnit.MILLISECONDS.toNanos(200)) {
+            throw new AssertionError("A screen opened over a screen held its background back: " + marks);
+        }
+
+        Mark content = firstMarkFor("paint.content");
+        report.add("screen over screen: background at " + (background.nanos() - start[0]) / 1_000_000L + " ms, page painted "
+                + (content == null ? "later" : "at " + (content.nanos() - start[0]) / 1_000_000L + " ms"));
+    }
+
+    /** Resizing and GUI Scale still reach the open page: zoom, grid, text and the native portrait all follow. */
+    private void checkLayoutFollowsTheWindow(ClientGameTestContext context, Path screenshots) {
+        context.getInput().setCursorPos(0.0D, 0.0D);
+        record LayoutCase(String name, int width, int height, int guiScale) {
+        }
+
+        for (LayoutCase layoutCase : List.of(
+                new LayoutCase("gui3", 1920, 1080, 3),
+                new LayoutCase("gui2", 1920, 1080, 2),
+                new LayoutCase("small-auto", 1254, 646, 0)
+        )) {
+            context.runOnClient(client -> {
+                client.options.guiScale().set(layoutCase.guiScale());
+                client.getWindow().setWindowed(layoutCase.width(), layoutCase.height());
+                client.resizeGui();
+            });
+            String[] last = new String[1];
+            try {
+                context.waitFor(client -> {
+                    if (!(client.screen instanceof OpenTimingScreen screen) || screen.lastLayoutJson() == null) {
+                        return false;
+                    }
+
+                    last[0] = screen.lastLayoutJson();
+                    JsonObject layout = JsonParser.parseString(last[0]).getAsJsonObject();
+                    return client.getWindow().getScreenWidth() == layoutCase.width()
+                            && layout.get("surfaceWidth").getAsDouble() == screen.width * CSS_PIXELS_PER_GUI_PIXEL
+                            && Math.abs(layout.get("zoom").getAsDouble() - client.getWindow().getGuiScale() / CSS_PIXELS_PER_GUI_PIXEL) < 0.001D
+                            && Math.abs(layout.get("viewportWidth").getAsDouble() - client.getWindow().getWidth()) <= 1.0D
+                            && layout.get("fontsReady").getAsBoolean()
+                            && layout.has("textSettled") && layout.get("textSettled").getAsBoolean();
+                }, 200);
+            } catch (AssertionError timeout) {
+                throw new AssertionError("Layout never followed the window at " + layoutCase.name() + "; last report: " + last[0], timeout);
+            }
+
+            JsonObject layout = JsonParser.parseString(last[0]).getAsJsonObject();
+            if (!layout.get("cardOnGrid").getAsBoolean() || layout.get("textCut").getAsInt() > 0 || layout.get("portraitScale").getAsDouble() <= 0.0D) {
+                throw new AssertionError("Wrong layout at " + layoutCase.name() + ": " + last[0]);
+            }
+
+            context.waitTicks(10);
+            context.takeScreenshot(
+                    TestScreenshotOptions.of("open-timing-layout-" + layoutCase.name())
+                            .disableCounterPrefix()
+                            .withDestinationDir(screenshots)
+            );
+            report.add("layout " + layoutCase.name() + ": " + last[0]);
+        }
     }
 
     private JsonObject pageTiming(ClientGameTestContext context) {
@@ -365,10 +459,11 @@ public final class OpenTimingClientGameTest implements FabricClientGameTest {
             double frameMillis,
             Map<String, Double> markTimes,
             Map<String, Double> pageTimes,
-            List<String> resources
+            List<String> resources,
+            List<Long> frameTimes
     ) {
         private Open(String label, String page, long startNanos, long startMillis, long setScreenEndNanos, int frames, double frameMillis) {
-            this(label, page, startNanos, startMillis, setScreenEndNanos, frames, frameMillis, new LinkedHashMap<>(), new LinkedHashMap<>(), new ArrayList<>());
+            this(label, page, startNanos, startMillis, setScreenEndNanos, frames, frameMillis, new LinkedHashMap<>(), new LinkedHashMap<>(), new ArrayList<>(), new ArrayList<>());
         }
 
         private double setScreenMillis() {
@@ -380,6 +475,7 @@ public final class OpenTimingClientGameTest implements FabricClientGameTest {
             line.append(String.format(Locale.ROOT, " setScreen=%.1f frames=%d frameMs=%.1f", setScreenMillis(), frames, frameMillis));
             markTimes.forEach((name, time) -> line.append(String.format(Locale.ROOT, " %s=%.1f", name, time)));
             pageTimes.forEach((name, time) -> line.append(String.format(Locale.ROOT, " page.%s=%.1f", name, time)));
+            line.append(" frameTimes=").append(frameTimes);
             if (!resources.isEmpty()) {
                 line.append(" resources=").append(resources);
             }

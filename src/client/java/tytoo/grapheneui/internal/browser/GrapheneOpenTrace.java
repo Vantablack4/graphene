@@ -1,8 +1,5 @@
 package tytoo.grapheneui.internal.browser;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.IntBuffer;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -33,7 +30,7 @@ public final class GrapheneOpenTrace {
         }
     }
 
-    static void paint(Object browser, ByteBuffer buffer, int width, int height, long version) {
+    static void paint(Object browser, boolean hasVisibleContent, int width, int height, long version) {
         Sink activeSink = sink;
         if (activeSink == null) {
             return;
@@ -46,7 +43,7 @@ public final class GrapheneOpenTrace {
             activeSink.mark(browser, "paint.first", width + "x" + height, now);
         }
 
-        if (state.contentVersion < 0L && hasVisiblePixel(buffer)) {
+        if (state.contentVersion < 0L && hasVisibleContent) {
             state.contentVersion = version;
             activeSink.mark(browser, "paint.content", width + "x" + height + " v" + version, now);
         }
@@ -69,17 +66,6 @@ public final class GrapheneOpenTrace {
             state.drawnContent = true;
             activeSink.mark(browser, "frame.content", "v" + version, now);
         }
-    }
-
-    private static boolean hasVisiblePixel(ByteBuffer buffer) {
-        IntBuffer pixels = buffer.duplicate().order(ByteOrder.nativeOrder()).position(0).asIntBuffer();
-        while (pixels.hasRemaining()) {
-            if (pixels.get() != 0) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     @FunctionalInterface

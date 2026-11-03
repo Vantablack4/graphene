@@ -2,6 +2,8 @@ package tytoo.grapheneui.internal.browser;
 
 import java.awt.*;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 
 final class GraphenePaintBuffer {
     private static final int BYTES_PER_PIXEL = 4;
@@ -13,6 +15,7 @@ final class GraphenePaintBuffer {
     private final Object mainCaptureLock = new Object();
     private final Object popupCaptureLock = new Object();
     private final GrapheneBrowserPerformanceMetrics performanceMetrics;
+    private volatile boolean visibleContentCaptured;
 
     GraphenePaintBuffer() {
         this(null);
@@ -42,6 +45,10 @@ final class GraphenePaintBuffer {
             popupFrameData.popupRect.setBounds(rect);
             popupFrameData.popupVisible = true;
         }
+    }
+
+    boolean hasVisibleContent() {
+        return visibleContentCaptured;
     }
 
     MainFrameInfo latestMainFrameInfo() {
@@ -130,9 +137,25 @@ final class GraphenePaintBuffer {
             copiedDamage = plan.damageToCopy;
         }
 
+        if (!visibleContentCaptured && hasVisiblePixel(sourceBuffer, width, height)) {
+            visibleContentCaptured = true;
+        }
+
         if (performanceMetrics != null) {
             performanceMetrics.recordCapture(copiedDamage, width, height, System.nanoTime() - startedAt);
         }
+    }
+
+    private static boolean hasVisiblePixel(ByteBuffer buffer, int width, int height) {
+        IntBuffer pixels = buffer.duplicate().order(ByteOrder.nativeOrder()).position(0).asIntBuffer();
+        pixels.limit(Math.min(pixels.capacity(), Math.multiplyExact(width, height)));
+        while (pixels.hasRemaining()) {
+            if (pixels.get() != 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void capturePopup(ByteBuffer sourceBuffer, int width, int height) {
