@@ -95,7 +95,9 @@ public final class GrapheneClasspathSchemeHandlerFactory implements CefSchemeHan
             String resourcePath = normalizeResourcePath(requestUrl);
             long startedAt = System.nanoTime();
             ResourceBytesResult resourceBytesResult = readResourceBytes(resourcePath);
-            GrapheneOpenTrace.mark(null, "resource.read", resourcePath + " " + (System.nanoTime() - startedAt) / 1_000_000.0D + "ms");
+            if (GrapheneOpenTrace.isActive()) {
+                GrapheneOpenTrace.mark(null, "resource.read", resourcePath + " " + (System.nanoTime() - startedAt) / 1_000_000.0D + "ms");
+            }
             responseBytes = resourceBytesResult.bytes();
             resourceFound = resourceBytesResult.found();
             corsAllowOrigin = opaqueCorsOriginFor(requestUrl, resourceFound);
