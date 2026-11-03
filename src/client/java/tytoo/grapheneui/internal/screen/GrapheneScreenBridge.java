@@ -15,4 +15,6 @@ public interface GrapheneScreenBridge {
     boolean graphene$isWebViewAutoCloseEnabled();
 
     void graphene$setWebViewAutoCloseEnabled(boolean autoClose);
+
+    void graphene$markOpenedOverWorld();
 }

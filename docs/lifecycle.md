@@ -55,6 +55,19 @@ Set `-Dgraphene.surface.awaitStartup=true` to make surface creation block until 
 Fabric client GameTest runs and surfaces built off the render thread use that blocking mode by default; set the
 property to `false` to test the starting state.
 
+## Opening A Screen Fast
+
+- Right after CEF starts, Graphene opens and closes one small hidden page. This loads its classes and leaves Chromium's
+  spare renderer process waiting, so the first screen of a session is about as fast as the later ones. No browser stays
+  open; the spare costs about 15 MB of private memory (30 MB working set), and Chromium keeps one anyway after any page
+  has loaded. Set `-Dgraphene.warmup=false` to skip it.
+- A screen opened over the world, with no other screen before it, keeps the world sharp until its web views have
+  painted something other than fully transparent pixels, for at most 800 ms. The world then blurs on the same frame the
+  page appears. A screen that opens from another screen, or without a world, draws its background at once as before, and
+  so does one that overrides `extractBackground`.
+- A page should reveal its panel once `data-graphene-surface` is set and its payload has arrived. Graphene sets the
+  attribute on load end, when the fonts the page has asked for have loaded, so the panel never shows without its text.
+
 ## Shared Config Merge Lifecycle
 
 Before runtime initialization, Graphene merges all registered global config contributions.
@@ -123,7 +136,8 @@ When disabled, you must close widgets and surfaces manually.
 
 - On navigation or load start, bridge readiness resets.
 - Pending Java requests fail when page changes.
-- On load end, Graphene injects bridge scripts.
+- On load start, Graphene injects bridge scripts, so they are usually there before the page's own scripts run. It
+  injects them again on load end; the second run does nothing if the first landed.
 - During render, Graphene retries bootstrap injection when needed.
 - On JS `ready`, queued outbound Java messages flush and `onReady` listeners run.
 - On close, bridge listeners/handlers/queue/pending requests are cleared.

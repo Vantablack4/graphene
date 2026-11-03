@@ -1,5 +1,6 @@
 package tytoo.grapheneui.internal.mixin;
 
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.AbstractContainerEventHandler;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -12,7 +13,9 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.widget.GrapheneWebViewWidget;
+import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.screen.GrapheneScreenBridge;
+import tytoo.grapheneui.internal.screen.GrapheneScreenOpenHold;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +28,12 @@ public abstract class ScreenMixin extends AbstractContainerEventHandler implemen
 
     @Unique
     private boolean grapheneui$autoCloseWebViews = true;
+
+    @Unique
+    private boolean grapheneui$openHeld;
+
+    @Unique
+    private long grapheneui$openedAtNanos;
 
     @Override
     public List<GrapheneWebViewWidget> graphene$webViewWidgets() {
@@ -68,6 +77,28 @@ public abstract class ScreenMixin extends AbstractContainerEventHandler implemen
         }
 
         return false;
+    }
+
+    @Override
+    public void graphene$markOpenedOverWorld() {
+        grapheneui$openHeld = true;
+        grapheneui$openedAtNanos = System.nanoTime();
+    }
+
+    @Inject(method = "extractBackground", at = @At("HEAD"), cancellable = true)
+    private void grapheneui$onExtractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick, CallbackInfo callbackInfo) {
+        if (grapheneui$openHeld) {
+            if (GrapheneScreenOpenHold.holdsBackground(System.nanoTime() - grapheneui$openedAtNanos, grapheneui$webViewWidgets)) {
+                callbackInfo.cancel();
+                return;
+            }
+
+            grapheneui$openHeld = false;
+        }
+
+        if (GrapheneOpenTrace.isActive()) {
+            GrapheneOpenTrace.mark(null, "background.first", "");
+        }
     }
 
     @Inject(method = "onClose", at = @At("HEAD"))

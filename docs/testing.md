@@ -43,6 +43,14 @@ context.waitFor(client -> GrapheneCore.isInitialized(), 2400);
 
 To exercise the starting placeholder instead, set `graphene.surface.awaitStartup` to `false` before opening the screen.
 
+## Client GameTests In This Repository
+
+`./gradlew runClientGameTest` opens real screens with real CEF in a live world. `OpenTimingClientGameTest` measures how
+long a screen shows nothing after it opens, cold and warm, and writes the breakdown to
+`build/test-evidence/open-timing/summary.txt`. It uses a small built-in page, and the real `/karakter` page when
+`../mod-characters` is checked out next to this repository (or `-PopenTimingPageDir=<dir>` names a copy). Close other
+heavy programs for numbers you can compare.
+
 ## In-Game Debug Validation
 
 Use the debug client and bundled pages to validate end-to-end behavior:

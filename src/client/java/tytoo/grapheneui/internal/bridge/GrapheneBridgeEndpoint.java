@@ -7,6 +7,7 @@ import tytoo.grapheneui.api.bridge.GrapheneBridgeEventListener;
 import tytoo.grapheneui.api.bridge.GrapheneBridgeRequestHandler;
 import tytoo.grapheneui.api.bridge.GrapheneBridgeSubscription;
 import tytoo.grapheneui.internal.browser.GrapheneBrowser;
+import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 
 import java.time.Duration;
@@ -182,6 +183,18 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
 
     public void onPageLoadStart() {
         onNavigationRequested();
+        if (closed.get()) {
+            return;
+        }
+
+        // Pages poll for the bridge while their scripts run. It installs before they do when it arrives now, instead
+        // of at load end, which waits for every stylesheet and font.
+        try {
+            injectBootstrapScript();
+        } catch (RuntimeException exception) {
+            DEBUG_LOGGER.debug("Bridge bootstrap injection failed on load start browserId={}", browserIdentifier(), exception);
+            // Load end and the render fallback inject it again.
+        }
     }
 
     public void onNavigationRequested() {
@@ -255,6 +268,7 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
             return;
         }
 
+        GrapheneOpenTrace.mark(browser, "bridge.ready", "");
         awaitingFirstPage = false;
         outboundQueue.markReadyAndFlush();
         readyUrl = currentUrl();
@@ -331,6 +345,7 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
         }
 
         String scriptUrl = boundBrowser.currentUrl();
+        GrapheneOpenTrace.mark(boundBrowser, "bridge.inject", scriptUrl);
         List<String> bootstrapScripts = GrapheneBridgeScriptLoader.scripts();
         for (String script : bootstrapScripts) {
             boundBrowser.executeScript(script, scriptUrl);

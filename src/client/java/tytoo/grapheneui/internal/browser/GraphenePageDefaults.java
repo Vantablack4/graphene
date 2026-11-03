@@ -53,6 +53,7 @@ public final class GraphenePageDefaults {
     }
 
     public static void applySurfaceCssPixels(GrapheneBrowser browser, int cssWidth, int cssHeight, double zoom) {
+        GrapheneOpenTrace.mark(browser, "surface.css", "");
         browser.executeScript(SURFACE_CSS_PIXELS_SCRIPT.formatted(cssWidth, cssHeight, Double.toString(zoom)));
     }
 

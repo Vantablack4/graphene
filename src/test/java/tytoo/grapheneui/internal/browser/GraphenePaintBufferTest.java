@@ -8,8 +8,31 @@ import java.nio.ByteBuffer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class GraphenePaintBufferTest {
+    @Test
+    void visibleContentStartsWithTheFirstFrameThatIsNotFullyTransparent() {
+        GraphenePaintBuffer paintBuffer = new GraphenePaintBuffer();
+        paintBuffer.capture(false, null, frame(4, 4, (byte) 0), 4, 4);
+        assertFalse(paintBuffer.hasVisibleContent());
+
+        ByteBuffer onePixel = frame(4, 4, (byte) 0);
+        onePixel.put(4 * 4 * 4 - 1, (byte) 255);
+        paintBuffer.capture(false, null, onePixel, 4, 4);
+        assertTrue(paintBuffer.hasVisibleContent());
+
+        paintBuffer.capture(false, null, frame(4, 4, (byte) 0), 4, 4);
+        assertTrue(paintBuffer.hasVisibleContent());
+    }
+
+    @Test
+    void aPopupIsNotVisibleContent() {
+        GraphenePaintBuffer paintBuffer = new GraphenePaintBuffer();
+        paintBuffer.capture(true, null, frame(4, 4, (byte) 255), 4, 4);
+        assertFalse(paintBuffer.hasVisibleContent());
+    }
+
     @Test
     void snapshotCombinesDamageAcrossPaintsSkippedByTheTexture() {
         GraphenePaintBuffer paintBuffer = new GraphenePaintBuffer();

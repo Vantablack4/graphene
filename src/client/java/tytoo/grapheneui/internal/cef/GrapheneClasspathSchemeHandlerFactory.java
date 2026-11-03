@@ -13,6 +13,7 @@ import org.cef.network.CefResponse;
 import org.jspecify.annotations.NonNull;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.url.GrapheneClasspathUrls;
+import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 import tytoo.grapheneui.internal.resource.GrapheneMimeTypes;
 import tytoo.grapheneui.internal.url.GrapheneAppUrls;
@@ -92,7 +93,11 @@ public final class GrapheneClasspathSchemeHandlerFactory implements CefSchemeHan
         public boolean processRequest(CefRequest request, CefCallback callback) {
             String requestUrl = request.getURL();
             String resourcePath = normalizeResourcePath(requestUrl);
+            long startedAt = System.nanoTime();
             ResourceBytesResult resourceBytesResult = readResourceBytes(resourcePath);
+            if (GrapheneOpenTrace.isActive()) {
+                GrapheneOpenTrace.mark(null, "resource.read", resourcePath + " " + (System.nanoTime() - startedAt) / 1_000_000.0D + "ms");
+            }
             responseBytes = resourceBytesResult.bytes();
             resourceFound = resourceBytesResult.found();
             corsAllowOrigin = opaqueCorsOriginFor(requestUrl, resourceFound);

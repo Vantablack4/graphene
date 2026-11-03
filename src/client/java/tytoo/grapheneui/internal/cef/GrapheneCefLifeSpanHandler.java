@@ -3,11 +3,17 @@ package tytoo.grapheneui.internal.cef;
 import org.cef.browser.CefBrowser;
 import org.cef.browser.CefFrame;
 import org.cef.handler.CefLifeSpanHandlerAdapter;
+import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 import tytoo.grapheneui.internal.mc.McClient;
 
 final class GrapheneCefLifeSpanHandler extends CefLifeSpanHandlerAdapter {
     private static final GrapheneDebugLogger DEBUG_LOGGER = GrapheneDebugLogger.of(GrapheneCefLifeSpanHandler.class);
+
+    @Override
+    public void onAfterCreated(CefBrowser browser) {
+        GrapheneOpenTrace.mark(browser, "browser.created", "");
+    }
 
     @Override
     public boolean onBeforePopup(CefBrowser browser, CefFrame ignoredFrame, String targetUrl, String targetFrameName) {
