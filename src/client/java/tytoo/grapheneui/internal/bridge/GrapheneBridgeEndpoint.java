@@ -7,6 +7,7 @@ import tytoo.grapheneui.api.bridge.GrapheneBridgeEventListener;
 import tytoo.grapheneui.api.bridge.GrapheneBridgeRequestHandler;
 import tytoo.grapheneui.api.bridge.GrapheneBridgeSubscription;
 import tytoo.grapheneui.internal.browser.GrapheneBrowser;
+import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 
 import java.time.Duration;
@@ -255,6 +256,7 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
             return;
         }
 
+        GrapheneOpenTrace.mark(browser, "bridge.ready", "");
         awaitingFirstPage = false;
         outboundQueue.markReadyAndFlush();
         readyUrl = currentUrl();
@@ -331,6 +333,7 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
         }
 
         String scriptUrl = boundBrowser.currentUrl();
+        GrapheneOpenTrace.mark(boundBrowser, "bridge.inject", scriptUrl);
         List<String> bootstrapScripts = GrapheneBridgeScriptLoader.scripts();
         for (String script : bootstrapScripts) {
             boundBrowser.executeScript(script, scriptUrl);

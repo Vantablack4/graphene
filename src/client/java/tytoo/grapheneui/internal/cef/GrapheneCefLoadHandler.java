@@ -6,6 +6,7 @@ import org.cef.handler.CefLoadHandler;
 import org.cef.handler.CefLoadHandlerAdapter;
 import org.cef.network.CefRequest;
 import tytoo.grapheneui.internal.bridge.GrapheneBridgeRuntime;
+import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.event.GrapheneLoadEventBus;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 import tytoo.grapheneui.internal.mc.McClient;
@@ -35,6 +36,12 @@ final class GrapheneCefLoadHandler extends CefLoadHandlerAdapter {
         }
     }
 
+    private static void traceMainFrame(CefBrowser browser, CefFrame frame, String name) {
+        if (GrapheneOpenTrace.isActive() && isMainFrame(frame)) {
+            GrapheneOpenTrace.mark(browser, name, frame == null ? "" : frame.getURL());
+        }
+    }
+
     @Override
     public void onLoadingStateChange(CefBrowser browser, boolean isLoading, boolean canGoBack, boolean canGoForward) {
         DEBUG_LOGGER.debug(
@@ -58,8 +65,10 @@ final class GrapheneCefLoadHandler extends CefLoadHandlerAdapter {
                 isMainFrame(frame),
                 transitionType
         );
+        traceMainFrame(browser, frame, "load.start.cef");
 
         McClient.runOnMainThread(() -> {
+            traceMainFrame(browser, frame, "load.start.main");
             loadEventBus.onLoadStart(browser, frame, transitionType);
             if (isMainFrame(frame)) {
                 bridgeRuntime.onLoadStart(browser);
@@ -75,8 +84,10 @@ final class GrapheneCefLoadHandler extends CefLoadHandlerAdapter {
                 isMainFrame(frame),
                 httpStatusCode
         );
+        traceMainFrame(browser, frame, "load.end.cef");
 
         McClient.runOnMainThread(() -> {
+            traceMainFrame(browser, frame, "load.end.main");
             loadEventBus.onLoadEnd(browser, frame, httpStatusCode);
             if (isMainFrame(frame)) {
                 bridgeRuntime.onLoadEnd(browser);

@@ -113,6 +113,46 @@ loom {
 	}
 }
 
+// Real-CEF client GameTests: `./gradlew runClientGameTest`. The source set never reaches the jar.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "graphene_gametest"
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+		clearRunDirectory = false
+	}
+}
+
+sourceSets.named("gametest") {
+	compileClasspath += clientSS.get().output
+	runtimeClasspath += clientSS.get().output
+}
+
+// The open-timing test also measures the real /karakter page when a mod-characters checkout sits next to this repo.
+val openTimingPageDir = providers.gradleProperty("openTimingPageDir")
+	.orElse("../mod-characters/src/client/resources/assets/mod_characters/web/character-card")
+tasks.named<ProcessResources>("processGametestResources") {
+	val pageDir = file(openTimingPageDir.get())
+	inputs.dir(pageDir).optional()
+	if (pageDir.isDirectory) {
+		from(pageDir) {
+			into("assets/graphene_gametest/web/karakter")
+			filesMatching("index.html") {
+				filter { line: String -> line.replace("<head>", "<head><script src=\"../open-timing-probe.js\"></script>") }
+			}
+		}
+	}
+}
+
+loom.runs.named("clientGameTest") {
+	property("fabric.client.gametest.modid", "graphene_gametest")
+	listOf("minimalFirst", "maxFps").forEach { name ->
+		providers.gradleProperty("openTiming.$name").orNull?.let { property("graphene.openTiming.$name", it) }
+	}
+}
+
 dependencies {
 	// To change the versions see the gradle.properties file
 	minecraft("com.mojang:minecraft:${minecraftVersion}")

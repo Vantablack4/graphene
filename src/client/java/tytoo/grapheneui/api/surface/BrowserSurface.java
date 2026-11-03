@@ -19,6 +19,7 @@ import tytoo.grapheneui.internal.bridge.GrapheneBridgeEndpoint;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceLoadListenerScope;
 import tytoo.grapheneui.internal.browser.BrowserSurfaceSizingState;
 import tytoo.grapheneui.internal.browser.GrapheneBrowser;
+import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.browser.GraphenePageDefaults;
 import tytoo.grapheneui.internal.cef.GrapheneCefRuntime;
 import tytoo.grapheneui.internal.core.GrapheneCoreServices;
@@ -465,6 +466,7 @@ public final class BrowserSurface implements AutoCloseable {
     }
 
     private void createBrowser() {
+        GrapheneOpenTrace.mark(null, "surface.create.start", pendingUrl);
         GrapheneCefRuntime runtime = services.runtimeInternal();
         CefClient cefClient = explicitClient != null ? explicitClient : runtime.requireClient();
         CefRequestContext requestContext = explicitRequestContext != null
@@ -492,6 +494,7 @@ public final class BrowserSurface implements AutoCloseable {
         browser = createdBrowser;
         createdBrowser.createImmediately();
         createdBrowser.wasResizedTo(sizingState.resolutionWidth(), sizingState.resolutionHeight());
+        GrapheneOpenTrace.mark(createdBrowser, "surface.create.end", "");
     }
 
     private void applyResizeInstruction(BrowserSurfaceSizingState.ResizeInstruction resizeInstruction) {

@@ -223,6 +223,9 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
     @Override
     public void onPaint(CefBrowser browser, boolean popup, Rectangle[] dirtyRects, ByteBuffer buffer, int width, int height) {
         paintBuffer.capture(popup, dirtyRects, buffer, width, height);
+        if (!popup && GrapheneOpenTrace.isActive()) {
+            GrapheneOpenTrace.paint(this, buffer, width, height, paintBuffer.latestMainFrameInfo().version());
+        }
     }
 
     @Override
@@ -340,6 +343,9 @@ public class GrapheneBrowser extends CefBrowserWindowless implements CefRenderHa
                 sourceWidth,
                 sourceHeight
         );
+        if (GrapheneOpenTrace.isActive()) {
+            GrapheneOpenTrace.drawn(this, renderer.mainUploadedVersion());
+        }
     }
 
     public BrowserSurfaceTextureFrame prepareMainFrameTexture(

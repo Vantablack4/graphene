@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "graphene_gametest",
+  "version": "1.0.0",
+  "name": "Graphene GameTests",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "tytoo.grapheneuitest.GrapheneGameTestClient"
+    ],
+    "fabric-client-gametest": [
+      "tytoo.grapheneuitest.OpenTimingClientGameTest"
+    ]
+  },
+  "depends": {
+    "fabricloader": "*",
+    "fabric-client-gametest-api-v1": "*",
+    "graphene-ui": "*"
+  }
+}

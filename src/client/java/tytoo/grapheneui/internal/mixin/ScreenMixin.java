@@ -1,5 +1,6 @@
 package tytoo.grapheneui.internal.mixin;
 
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.components.events.AbstractContainerEventHandler;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -12,6 +13,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import tytoo.grapheneui.api.GrapheneCore;
 import tytoo.grapheneui.api.widget.GrapheneWebViewWidget;
+import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.screen.GrapheneScreenBridge;
 
 import java.util.ArrayList;
@@ -68,6 +70,13 @@ public abstract class ScreenMixin extends AbstractContainerEventHandler implemen
         }
 
         return false;
+    }
+
+    @Inject(method = "extractBackground", at = @At("HEAD"))
+    private void grapheneui$onExtractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick, CallbackInfo callbackInfo) {
+        if (GrapheneOpenTrace.isActive()) {
+            GrapheneOpenTrace.mark(null, "background.first", "");
+        }
     }
 
     @Inject(method = "onClose", at = @At("HEAD"))
