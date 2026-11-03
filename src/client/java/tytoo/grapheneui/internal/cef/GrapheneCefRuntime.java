@@ -326,6 +326,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
                 registerShutdownHook();
                 logInitializationState();
             }
+            McClient.runOnMainThread(GrapheneSurfaceWarmup::start);
         } finally {
             downloadState.reset();
         }
