@@ -39,8 +39,8 @@ import java.util.function.Function;
  * a local error.
  */
 final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
-    static final int MAX_BODY_BYTES = 4 * 1024 * 1024;
-    static final int MAX_RUNNING = 32;
+    static final int MAX_BODY_BYTES = 8 * 1024 * 1024;
+    static final int MAX_RUNNING = 16;
     static final int MAX_QUEUED = 512;
     static final Duration DEADLINE = Duration.ofSeconds(30);
     static final String NOSNIFF = "nosniff";

@@ -343,8 +343,9 @@ final class GrapheneProxiedAssetHandlerTest {
     }
 
     @Test
-    void theBodyReaderStopsAtItsCapOfFourMebibytes() {
-        assertEquals(4 * 1024 * 1024, GrapheneProxiedAssetHandler.MAX_BODY_BYTES);
+    void theBodyReaderStopsAtItsCapAndAtMost128MebibytesAreEverBuffered() {
+        assertEquals(8 * 1024 * 1024, GrapheneProxiedAssetHandler.MAX_BODY_BYTES);
+        assertTrue((long) GrapheneProxiedAssetHandler.MAX_BODY_BYTES * GrapheneProxiedAssetHandler.MAX_RUNNING <= 128L * 1024 * 1024);
 
         GrapheneProxiedAssetHandler.CappedBodySubscriber small = new GrapheneProxiedAssetHandler.CappedBodySubscriber(4);
         small.onSubscribe(new RecordingSubscription());

@@ -143,11 +143,11 @@ GrapheneCore.register(MyMod.class, GrapheneConfig.builder()
   GET only, the listed extensions only (never HTML, SVG, XML, scripts, styles, WebAssembly or PDF), a plain path
   (letters, digits, `.`, `_`, `-`, no dot segments, no percent escapes, no query, at most 512 characters), nothing
   forwarded from the page (no cookies, headers or query), no redirects.
-- A proxied body is at most 4 MiB (one declared larger is stopped at its headers) and must arrive whole within 30
+- A proxied body is at most 8 MiB (one declared larger is stopped at its headers) and must arrive whole within 30
   seconds of its fetch starting. An upstream 404 is a local 404, a missed deadline a local 504, and any other answer
   or failure a local 502.
-- At most 32 fetches hold a slot at once, each from the start of its fetch until CEF has read its body or cancelled
-  it, so at most 32 bodies (128 MiB) are ever buffered. Up to 512 more requests wait their turn in order (a request
+- At most 16 fetches hold a slot at once, each from the start of its fetch until CEF has read its body or cancelled
+  it, so at most 16 bodies (128 MiB) are ever buffered. Up to 512 more requests wait their turn in order (a request
   CEF cancels leaves the queue), and only beyond that does a request get a local 503. A queued request never times
   out while it waits; every running fetch ends within its deadline, so the queue always drains.
 - The response type comes from the extension and carries `X-Content-Type-Options: nosniff` and
