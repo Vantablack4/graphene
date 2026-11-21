@@ -197,6 +197,16 @@ final class GrapheneBundledPagesTest {
     }
 
     @Test
+    void overlongPathsAndUrlsAreRefusedBeforeAnyMatching() {
+        String longName = "a".repeat(600) + ".json";
+        assertTrue(PAGES.resolve(PROXY_PREFIX + "game-assets/" + longName).refused());
+        assertTrue(PAGES.resolve(PREFIX + longName).refused());
+        assertTrue(PAGES.resolve(PREFIX + "index.html?pad=" + "b".repeat(5000)).refused());
+        assertEquals(UPSTREAM + "game-assets/" + "a".repeat(400) + ".json", upstream(PROXY_PREFIX + "game-assets/" + "a".repeat(400) + ".json"));
+        assertEquals(DIRECTORY + "index.html", path(PAGES, PREFIX + "index.html?mode=editor&assetBase=" + "c".repeat(300)));
+    }
+
+    @Test
     void proxiedPathsWithAnyPercentEscapeAreRefused() {
         for (String url : new String[]{
                 PROXY_PREFIX + "game-assets/%6danifest.json",

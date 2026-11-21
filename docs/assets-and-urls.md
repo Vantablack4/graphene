@@ -141,15 +141,19 @@ GrapheneCore.register(MyMod.class, GrapheneConfig.builder()
   `index.html`).
 - Every request under a `proxiedAssets` prefix is fetched by Java from the upstream directory plus the same path:
   GET only, the listed extensions only (never HTML, SVG, XML, scripts, styles, WebAssembly or PDF), a plain path
-  (letters, digits, `.`, `_`, `-`, no dot segments, no query), nothing forwarded from the page (no cookies, headers or
-  query), no percent escapes, no redirects, at most 16 MiB, and the whole body within 30 seconds. At most 32 fetches
-  run at once; up to 512 more wait their turn in order (a request CEF cancels leaves the queue), and only beyond that
-  does a request get a local 503. The 30 seconds count from when a fetch starts, so a queued request never times out
-  while it waits; every running fetch ends within its deadline, so the queue always drains. The response type comes from the extension and carries
-  `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (a subresource ignores that CSP, so
-  fonts, images and JSON still load; a proxied file opened as a document cannot run anything). An upstream 404 is a
-  local 404, a missed deadline a local 504, and any other upstream answer or failure a local 502. The fetch and its
-  continuations run on Graphene's own small thread pool, never on CEF's IO thread.
+  (letters, digits, `.`, `_`, `-`, no dot segments, no percent escapes, no query, at most 512 characters), nothing
+  forwarded from the page (no cookies, headers or query), no redirects.
+- A proxied body is at most 4 MiB (one declared larger is stopped at its headers) and must arrive whole within 30
+  seconds of its fetch starting. An upstream 404 is a local 404, a missed deadline a local 504, and any other answer
+  or failure a local 502.
+- At most 32 fetches hold a slot at once, each from the start of its fetch until CEF has read its body or cancelled
+  it, so at most 32 bodies (128 MiB) are ever buffered. Up to 512 more requests wait their turn in order (a request
+  CEF cancels leaves the queue), and only beyond that does a request get a local 503. A queued request never times
+  out while it waits; every running fetch ends within its deadline, so the queue always drains.
+- The response type comes from the extension and carries `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: sandbox` (a subresource ignores that CSP, so fonts, images and JSON still load; a proxied
+  file opened as a document cannot run anything).
+- Every start, cancel and continuation runs on Graphene's own small thread pool, never on CEF's IO thread.
 - Every other request on the origin, and any path that tries to leave a mount, is answered with a local error and
   never reaches the network.
 - The origin must be `https` on a host ending in `.invalid` (RFC 6761 reserves it; it never resolves), with no port.

@@ -3,16 +3,19 @@ package tytoo.grapheneui.internal.cef;
 import java.util.ArrayDeque;
 import java.util.Objects;
 import java.util.concurrent.Executor;
+import java.util.function.Consumer;
 
 /**
- * Runs at most {@code maxRunning} proxied fetches at once and lets up to {@code maxQueued} more wait their turn in
- * arrival order. Only a request that finds the queue full is turned away.
+ * Hands out at most {@code maxRunning} slots for proxied fetches and lets up to {@code maxQueued} more requests wait
+ * in arrival order. Only a request that finds the queue full is turned away. Every grant runs on the starter
+ * executor, never on the caller's thread, and each slot has exactly one owner: the {@link Ticket} it was granted to,
+ * until that ticket is released.
  */
 final class GrapheneProxyQueue {
     private final int maxRunning;
     private final int maxQueued;
     private final Executor starter;
-    private final ArrayDeque<Runnable> waiting = new ArrayDeque<>();
+    private final ArrayDeque<Ticket> waiting = new ArrayDeque<>();
     private int running;
     private int peakRunning;
     private int peakWaiting;
@@ -28,51 +31,27 @@ final class GrapheneProxyQueue {
     }
 
     /**
-     * Starts {@code fetch} now when a slot is free, queues it otherwise, and returns {@code false} only when the queue
-     * is full too. A started fetch owns a slot until {@link #release()}.
+     * Asks for a slot. When one is free, or later when one frees up, {@code onGranted} runs on the starter executor
+     * with the ticket that now owns the slot. Returns that ticket, or {@code null} when the queue is full.
      */
-    boolean submit(Runnable fetch) {
-        Objects.requireNonNull(fetch, "fetch");
+    Ticket submit(Consumer<Ticket> onGranted) {
+        Ticket ticket = new Ticket(Objects.requireNonNull(onGranted, "onGranted"));
         synchronized (this) {
-            if (running >= maxRunning) {
-                if (waiting.size() >= maxQueued) {
-                    return false;
-                }
-
-                waiting.addLast(fetch);
+            if (running < maxRunning) {
+                running++;
+                peakRunning = Math.max(peakRunning, running);
+                ticket.granted = true;
+            } else if (waiting.size() < maxQueued) {
+                waiting.addLast(ticket);
                 peakWaiting = Math.max(peakWaiting, waiting.size());
-                return true;
-            }
-
-            running++;
-            peakRunning = Math.max(peakRunning, running);
-        }
-
-        fetch.run();
-        return true;
-    }
-
-    /**
-     * Takes a fetch that has not started out of the queue. Returns {@code false} when it was not waiting.
-     */
-    synchronized boolean remove(Runnable fetch) {
-        return waiting.remove(fetch);
-    }
-
-    /**
-     * Frees a slot and starts the next waiting fetch, if any, on the starter executor.
-     */
-    void release() {
-        Runnable next;
-        synchronized (this) {
-            next = waiting.pollFirst();
-            if (next == null) {
-                running = Math.max(0, running - 1);
-                return;
+                return ticket;
+            } else {
+                return null;
             }
         }
 
-        starter.execute(next);
+        starter.execute(ticket::grant);
+        return ticket;
     }
 
     synchronized int running() {
@@ -89,5 +68,52 @@ final class GrapheneProxyQueue {
 
     synchronized int peakWaiting() {
         return peakWaiting;
+    }
+
+    private void release(Ticket ticket) {
+        Ticket next;
+        synchronized (this) {
+            if (ticket.released) {
+                return;
+            }
+
+            ticket.released = true;
+            if (!ticket.granted) {
+                waiting.remove(ticket);
+                return;
+            }
+
+            next = waiting.pollFirst();
+            if (next == null) {
+                running--;
+                return;
+            }
+
+            next.granted = true;
+        }
+
+        starter.execute(next::grant);
+    }
+
+    /**
+     * One request's place: waiting, or holding a slot. {@link #release()} gives it up exactly once, from any thread;
+     * a waiting ticket simply leaves the queue, a granted one hands its slot to the next waiting request.
+     */
+    final class Ticket {
+        private final Consumer<Ticket> onGranted;
+        private boolean granted;
+        private boolean released;
+
+        private Ticket(Consumer<Ticket> onGranted) {
+            this.onGranted = onGranted;
+        }
+
+        void release() {
+            GrapheneProxyQueue.this.release(this);
+        }
+
+        private void grant() {
+            onGranted.accept(this);
+        }
     }
 }

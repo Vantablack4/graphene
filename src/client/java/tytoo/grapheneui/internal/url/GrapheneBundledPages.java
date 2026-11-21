@@ -32,6 +32,8 @@ public final class GrapheneBundledPages {
             "htm", "html", "xhtml", "xht", "xml", "svg", "svgz", "js", "mjs", "css", "wasm", "pdf"
     );
     private static final String RESERVED_HOST_SUFFIX = ".invalid";
+    private static final int MAX_PATH_LENGTH = 512;
+    private static final int MAX_URL_LENGTH = 4096;
     private static final Set<String> LOOPBACK_HOSTS = Set.of("127.0.0.1", "localhost", "[::1]");
 
     private final List<Mount> mounts;
@@ -188,8 +190,13 @@ public final class GrapheneBundledPages {
             return Resolution.NOT_OWNED;
         }
 
+        if (value.length() > MAX_URL_LENGTH) {
+            return Resolution.REFUSED;
+        }
+
         URI uri = parse(value);
-        if (uri == null || uri.getHost() == null || uri.getPath() == null) {
+        if (uri == null || uri.getHost() == null || uri.getPath() == null
+                || uri.getRawPath() == null || uri.getRawPath().length() > MAX_PATH_LENGTH) {
             return Resolution.REFUSED;
         }
 
