@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Popup</title>
+</head>
+<body>
+<script>
+  window.cefQuery({
+    request: JSON.stringify({ bridge: "graphene-ui", version: 1, kind: "event", channel: "test:popup", payload: {} }),
+    onSuccess: function () {},
+    onFailure: function () {}
+  });
+</script>
+</body>
+</html>

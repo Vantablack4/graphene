@@ -7,6 +7,7 @@ import tytoo.grapheneui.internal.cef.alert.GrapheneFolderUploadDialogManager;
 import tytoo.grapheneui.internal.cef.alert.GrapheneJsDialogManager;
 import tytoo.grapheneui.internal.event.GrapheneLoadEventBus;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
+import tytoo.grapheneui.internal.url.GrapheneBundledPages;
 
 import java.util.Objects;
 
@@ -16,7 +17,12 @@ public final class GrapheneCefClientConfig {
     private GrapheneCefClientConfig() {
     }
 
-    public static void configure(CefClient cefClient, GrapheneLoadEventBus loadEventBus, GrapheneBridgeRuntime bridgeRuntime) {
+    public static void configure(
+            CefClient cefClient,
+            GrapheneLoadEventBus loadEventBus,
+            GrapheneBridgeRuntime bridgeRuntime,
+            GrapheneBundledPages bundledPages
+    ) {
         CefClient validatedClient = Objects.requireNonNull(cefClient, "cefClient");
         GrapheneLoadEventBus validatedLoadEventBus = Objects.requireNonNull(loadEventBus, "loadEventBus");
         GrapheneBridgeRuntime validatedBridgeRuntime = Objects.requireNonNull(bridgeRuntime, "bridgeRuntime");
@@ -25,7 +31,7 @@ public final class GrapheneCefClientConfig {
         GrapheneCefDownloadHandler downloadHandler = new GrapheneCefDownloadHandler();
         GrapheneCefKeyboardHandler keyboardHandler = new GrapheneCefKeyboardHandler();
         GrapheneCefLifeSpanHandler lifeSpanHandler = new GrapheneCefLifeSpanHandler();
-        GrapheneCefRequestHandler requestHandler = new GrapheneCefRequestHandler();
+        GrapheneCefRequestHandler requestHandler = new GrapheneCefRequestHandler(Objects.requireNonNull(bundledPages, "bundledPages"));
 
         validatedClient.addLoadHandler(new GrapheneCefLoadHandler(validatedLoadEventBus, validatedBridgeRuntime));
         validatedClient.addDisplayHandler(new GrapheneCefDisplayHandler());

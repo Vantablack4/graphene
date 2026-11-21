@@ -107,6 +107,17 @@ unhandle();
 - On navigation or page load start, readiness resets and pending Java requests fail.
 - On close/detach, handlers, queue state, and pending requests are cleared.
 
+## Who May Call The Bridge
+
+- Only the main frame may call. Calls from iframes are refused, also when they come from the same origin.
+- Only pages from an origin that Java loaded into the surface may call: the builder's `url(...)` and every
+  `loadUrl(...)`. Where the page then navigates on its own (links, `location`, redirects) counts only if it stays
+  on one of those origins. `about:blank`, `data:` and `blob:` documents never get the bridge.
+- A refused call fails at once with CEF error code `403`; it never reaches a handler, and the page never becomes ready.
+- `window.open` and other popups are cancelled and never load into the surface. `bridge.js` still turns the main
+  frame's own `window.open` and `target="_blank"` links into a navigation of the page, which the origin rule then covers.
+- A link opened as a new tab (middle click) navigates the surface only when the main frame opened it.
+
 ## Error Codes
 
 Common codes returned by bridge request failures:

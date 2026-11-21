@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Bridge callers</title>
+<style>
+  html, body { margin: 0; background: #25211b; color: #fff; font: 16px sans-serif; }
+  iframe { width: 200px; height: 60px; border: 1px solid #888; }
+</style>
+</head>
+<body>
+<p id="state">waiting</p>
+<iframe id="same" src="frame.html"></iframe>
+<iframe id="foreign"></iframe>
+<script>
+  const FRAME_SCRIPT = `
+    <script>
+      const call = { bridge: "graphene-ui", version: 1, kind: "event", channel: "test:frame", payload: { from: "foreign" } };
+      function answer(result) { parent.postMessage(Object.assign({ frame: "foreign" }, result), "*"); }
+      try {
+        window.cefQuery({
+          request: JSON.stringify(call),
+          onSuccess: function () { answer({ ok: true }); },
+          onFailure: function (code, message) { answer({ ok: false, code: code, message: message }); }
+        });
+      } catch (error) {
+        answer({ ok: false, code: -1, message: String(error) });
+      }
+      try { window.open("https://bridge-popup.invalid/from-foreign-frame", "_blank"); } catch (ignored) {}
+    <\/script>`;
+  document.getElementById("foreign").src = "data:text/html;charset=utf-8," + encodeURIComponent(FRAME_SCRIPT);
+
+  const results = {};
+  let reported = false;
+
+  function report() {
+    if (reported || !results.same || !results.foreign || !globalThis.grapheneBridge || !globalThis.grapheneBridge.isReady()) {
+      return;
+    }
+
+    reported = true;
+    document.getElementById("state").textContent = "reported";
+    globalThis.grapheneBridge.emit("test:report", results);
+  }
+
+  window.addEventListener("message", function (event) {
+    if (event.data && typeof event.data.frame === "string") {
+      results[event.data.frame] = event.data;
+      report();
+    }
+  });
+
+  function whenBridgeReady() {
+    if (!globalThis.grapheneBridge) {
+      setTimeout(whenBridgeReady, 20);
+      return;
+    }
+
+    globalThis.grapheneBridge.ready().then(function () {
+      globalThis.grapheneBridge.request("test:main", { from: "main" }).then(report);
+    });
+  }
+
+  whenBridgeReady();
+</script>
+</body>
+</html>

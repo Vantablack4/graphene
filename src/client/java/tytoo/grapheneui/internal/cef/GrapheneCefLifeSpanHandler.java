@@ -5,7 +5,6 @@ import org.cef.browser.CefFrame;
 import org.cef.handler.CefLifeSpanHandlerAdapter;
 import tytoo.grapheneui.internal.browser.GrapheneOpenTrace;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
-import tytoo.grapheneui.internal.mc.McClient;
 
 final class GrapheneCefLifeSpanHandler extends CefLifeSpanHandlerAdapter {
     private static final GrapheneDebugLogger DEBUG_LOGGER = GrapheneDebugLogger.of(GrapheneCefLifeSpanHandler.class);
@@ -16,18 +15,15 @@ final class GrapheneCefLifeSpanHandler extends CefLifeSpanHandlerAdapter {
     }
 
     @Override
-    public boolean onBeforePopup(CefBrowser browser, CefFrame ignoredFrame, String targetUrl, String targetFrameName) {
-        if (browser == null) {
-            return false;
-        }
-
-        if (targetUrl == null || targetUrl.isBlank()) {
-            DEBUG_LOGGER.debug("Blocked popup without target URL");
-            return true;
-        }
-
-        McClient.runOnMainThread(() -> browser.loadURL(targetUrl));
-        DEBUG_LOGGER.debug("Redirected popup request into current browser targetUrl={} targetFrame={}", targetUrl, targetFrameName);
+    public boolean onBeforePopup(CefBrowser browser, CefFrame frame, String targetUrl, String targetFrameName) {
+        // A popup would be a new browser on this client, and loading it into this one would hand the opener's frame
+        // the surface. Pages navigate themselves instead; bridge.js turns the main frame's window.open into that.
+        DEBUG_LOGGER.debug(
+                "Blocked popup mainFrame={} targetUrl={} targetFrame={}",
+                frame != null && frame.isMain(),
+                targetUrl,
+                targetFrameName
+        );
         return true;
     }
 }

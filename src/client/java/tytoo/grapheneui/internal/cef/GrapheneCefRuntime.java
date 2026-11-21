@@ -27,6 +27,7 @@ import tytoo.grapheneui.internal.http.GrapheneHttpServerRuntime;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 import tytoo.grapheneui.internal.mc.McClient;
 import tytoo.grapheneui.internal.platform.GraphenePlatform;
+import tytoo.grapheneui.internal.url.GrapheneBundledPages;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -67,6 +68,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
     private CefClient cefClient;
     private int remoteDebuggingPort = -1;
     private volatile GrapheneHttpServerRuntime httpServer = GrapheneHttpServerRuntime.disabled();
+    private volatile GrapheneBundledPages bundledPages = GrapheneBundledPages.empty();
     private CompletableFuture<Void> initializationFuture;
 
     public GrapheneCefRuntime(GrapheneBrowserSurfaceManager surfaceManager) {
@@ -159,6 +161,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
                 return CompletableFuture.failedFuture(exception);
             }
 
+            bundledPages = bundledPages(validatedContainerConfigs);
             registerShutdownHook();
             CompletableFuture<Void> startupFuture = CompletableFuture.runAsync(
                     () -> initializeInternal(validatedGlobalConfig),
@@ -427,7 +430,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
     private void initializeClient(CefAppBuilder cefAppBuilder) {
         try {
             cefClient = cefApp.createClient();
-            GrapheneCefClientConfig.configure(cefClient, loadEventBus, bridgeRuntime);
+            GrapheneCefClientConfig.configure(cefClient, loadEventBus, bridgeRuntime, bundledPages);
             int configuredRemoteDebugPort = cefAppBuilder.getCefSettings().remote_debugging_port;
             remoteDebuggingPort = configuredRemoteDebugPort > 0 ? configuredRemoteDebugPort : -1;
             initialized = true;
@@ -461,6 +464,15 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
         if (httpServer.isRunning()) {
             LOGGER.info("Graphene HTTP server initialized at {}", httpServer.baseUrl());
         }
+    }
+
+    private static GrapheneBundledPages bundledPages(Map<String, GrapheneContainerConfig> containerConfigs) {
+        LinkedHashMap<String, String> resourceDirectoriesByUrlPrefix = new LinkedHashMap<>();
+        for (GrapheneContainerConfig containerConfig : containerConfigs.values()) {
+            resourceDirectoriesByUrlPrefix.putAll(containerConfig.bundledPages());
+        }
+
+        return GrapheneBundledPages.of(resourceDirectoriesByUrlPrefix);
     }
 
     private void startHttpServerIfConfigured(Map<String, GrapheneContainerConfig> containerConfigs) {

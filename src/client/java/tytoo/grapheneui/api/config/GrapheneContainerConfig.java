@@ -1,5 +1,9 @@
 package tytoo.grapheneui.api.config;
 
+import tytoo.grapheneui.internal.url.GrapheneBundledPages;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -9,9 +13,11 @@ public final class GrapheneContainerConfig {
     private static final String HTTP_CONFIG_NAME = "httpConfig";
 
     private final GrapheneHttpConfig httpConfig;
+    private final Map<String, String> bundledPages;
 
     private GrapheneContainerConfig(Builder builder) {
         this.httpConfig = builder.httpConfig;
+        this.bundledPages = Map.copyOf(builder.bundledPages);
     }
 
     public static GrapheneContainerConfig defaults() {
@@ -26,6 +32,13 @@ public final class GrapheneContainerConfig {
         return Optional.ofNullable(httpConfig);
     }
 
+    /**
+     * The jar directories that serve web URL prefixes, by prefix. See {@link Builder#bundledPages(String, String)}.
+     */
+    public Map<String, String> bundledPages() {
+        return bundledPages;
+    }
+
     @Override
     public boolean equals(Object object) {
         if (this == object) {
@@ -36,15 +49,16 @@ public final class GrapheneContainerConfig {
             return false;
         }
 
-        return Objects.equals(httpConfig, other.httpConfig);
+        return Objects.equals(httpConfig, other.httpConfig) && bundledPages.equals(other.bundledPages);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(httpConfig);
+        return Objects.hash(httpConfig, bundledPages);
     }
 
     public static final class Builder {
+        private final Map<String, String> bundledPages = new LinkedHashMap<>();
         private GrapheneHttpConfig httpConfig;
 
         private Builder() {
@@ -52,6 +66,21 @@ public final class GrapheneContainerConfig {
 
         public Builder http(GrapheneHttpConfig httpConfig) {
             this.httpConfig = Objects.requireNonNull(httpConfig, HTTP_CONFIG_NAME);
+            return this;
+        }
+
+        /**
+         * Serves every request under {@code urlPrefix} (for example {@code https://cdn.example.com/site/page/}) from
+         * the jar directory {@code resourceDirectory} (for example {@code assets/my_mod/web/page/}) instead of the
+         * network. The page keeps the prefix's origin, so it can read that origin's other files without CORS, while
+         * its HTML, scripts and styles cannot be changed by whoever serves the origin. Paths outside the prefix still
+         * go to the network.
+         */
+        public Builder bundledPages(String urlPrefix, String resourceDirectory) {
+            bundledPages.put(
+                    GrapheneBundledPages.validateUrlPrefix(urlPrefix),
+                    GrapheneBundledPages.validateResourceDirectory(resourceDirectory)
+            );
             return this;
         }
 

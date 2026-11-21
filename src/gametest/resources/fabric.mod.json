@@ -9,6 +9,7 @@
       "tytoo.grapheneuitest.GrapheneGameTestClient"
     ],
     "fabric-client-gametest": [
+      "tytoo.grapheneuitest.BridgeCallerClientGameTest",
       "tytoo.grapheneuitest.OpenTimingClientGameTest"
     ]
   },

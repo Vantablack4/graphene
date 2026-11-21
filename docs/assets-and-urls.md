@@ -122,6 +122,23 @@ Important behavior:
 - Successful HTTP assets advertise byte-range support. Single `bytes=` ranges return `206 Partial Content`, which lets
   Chromium seek and stream bundled media without downloading the whole file first.
 
+## Bundled Pages On A Web Origin
+
+A page that reads data from a web host (for example a CDN without CORS headers) can be served from the jar under
+that host's origin, so its code cannot be changed by whoever controls the host:
+
+```java
+GrapheneCore.register(MyMod.class, GrapheneConfig.builder()
+        .container(GrapheneContainerConfig.builder()
+                .bundledPages("https://cdn.example.com/my-mod/bundled/", "assets/my_mod/web/page/")
+                .build())
+        .build());
+```
+
+Every request under the prefix is answered from the jar directory (a path ending in `/` serves `index.html`); paths
+that try to leave the directory are refused, and other paths on the host still go to the network. Register before
+Graphene starts, like the HTTP mode.
+
 ## Recommendations
 
 - Keep web assets under `assets/<mod-id>/web/...`.
