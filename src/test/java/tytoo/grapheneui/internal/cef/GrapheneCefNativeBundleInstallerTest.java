@@ -166,13 +166,34 @@ final class GrapheneCefNativeBundleInstallerTest {
     }
 
     @Test
-    void plainHttpMirrorIsRejected() {
+    void plainHttpMirrorIsRefusedWithoutARequest() {
         String mirror = "http://127.0.0.1:" + plainServer.getAddress().getPort() + "/natives.jar";
+        GrapheneCefNativeBundleInstaller installer =
+                new GrapheneCefNativeBundleInstaller(installDir(), List.of(mirror), pin(), IGNORED_PROGRESS, false, 1L, 500);
 
-        assertThrows(IllegalArgumentException.class, () -> new GrapheneCefNativeBundleInstaller(
-                installDir(), List.of(mirror), pin(), IGNORED_PROGRESS, false, 1L, 500));
+        assertThrows(IOException.class, installer::ensureInstalled);
 
         assertEquals(0, plainRequests.get());
+    }
+
+    @Test
+    void mirrorClaimingAShortPartialIsCompleteFallsBackToTheNextMirror() throws Exception {
+        // The first mirror answers 416 with a total equal to the short partial file; that is not the pinned bundle.
+        int half = bundle.length / 2;
+        server.createContext("/short", exchange -> {
+            exchange.getResponseHeaders().add("Content-Range", "bytes */" + half);
+            exchange.sendResponseHeaders(416, -1);
+            exchange.close();
+        });
+        Path installDir = installDir();
+        GrapheneCefNativeBundleInstaller installer = new GrapheneCefNativeBundleInstaller(installDir,
+                List.of(url("/short"), url("/natives.jar")), pin(), IGNORED_PROGRESS, false, 1L, 500);
+        Files.createDirectories(installDir.getParent());
+        Files.write(installer.partialFile(), Arrays.copyOf(bundle, half));
+
+        installer.ensureInstalled();
+
+        assertInstalled(installDir);
     }
 
     @Test

@@ -64,11 +64,6 @@ final class GrapheneCefNativeBundleInstaller {
         this.installDir = Objects.requireNonNull(installDir, "installDir");
         this.mirrorUrls = List.copyOf(Objects.requireNonNull(mirrorUrls, "mirrorUrls"));
         this.pin = Objects.requireNonNull(pin, "pin");
-        for (String mirrorUrl : this.mirrorUrls) {
-            if (!isHttps(mirrorUrl)) {
-                throw new IllegalArgumentException("CEF native mirrors must use https: " + mirrorUrl);
-            }
-        }
         this.progressHandler = Objects.requireNonNull(progressHandler, "progressHandler");
         this.macOs = macOs;
         this.initialBackoffMillis = initialBackoffMillis;
@@ -192,7 +187,7 @@ final class GrapheneCefNativeBundleInstaller {
         try {
             int status = connection.getResponseCode();
             if (status == HTTP_RANGE_NOT_SATISFIABLE && offset > 0) {
-                if (offset == unsatisfiedRangeTotal(connection)) {
+                if (offset == pin.size() && offset == unsatisfiedRangeTotal(connection)) {
                     return true;
                 }
                 LOGGER.warn("CEF native mirror {} rejected resuming at {} bytes; restarting the download", mirrorUrl, offset);
@@ -227,8 +222,8 @@ final class GrapheneCefNativeBundleInstaller {
             }
             transfer(connection, partialFile, offset, pin.size(), resumed);
             long downloadedSize = existingSize(partialFile);
-            if (totalSize > 0 && downloadedSize != totalSize) {
-                throw new IOException("CEF native download ended at " + downloadedSize + " of " + totalSize + " bytes");
+            if (downloadedSize != pin.size()) {
+                throw new IOException("CEF native download ended at " + downloadedSize + " of " + pin.size() + " bytes");
             }
 
             return true;
