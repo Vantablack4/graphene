@@ -5,6 +5,7 @@ import org.cef.callback.CefQueryCallback;
 import tytoo.grapheneui.api.bridge.GrapheneBridge;
 import tytoo.grapheneui.internal.browser.GrapheneBrowser;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
+import tytoo.grapheneui.internal.url.GrapheneBundledPages;
 
 import java.util.*;
 
@@ -18,6 +19,7 @@ public final class GrapheneBridgeRuntime {
     private final GrapheneBridgeOptions options;
     private final Map<CefBrowser, GrapheneBridgeEndpoint> endpointsByBrowser = new IdentityHashMap<>();
     private final Map<Integer, GrapheneBridgeEndpoint> endpointsByBrowserId = new HashMap<>();
+    private volatile GrapheneBundledPages bundledPages = GrapheneBundledPages.empty();
 
     public GrapheneBridgeRuntime() {
         this(GrapheneBridgeOptions.defaults());
@@ -135,6 +137,24 @@ public final class GrapheneBridgeRuntime {
         DEBUG_LOGGER.debug("Bridge ensureBootstrap browserId={}", browserIdentifier(browser));
     }
 
+    public void useBundledPages(GrapheneBundledPages bundledPages) {
+        this.bundledPages = Objects.requireNonNull(bundledPages, "bundledPages");
+    }
+
+    public void onMainFrameRequest(CefBrowser browser, String jarUrl) {
+        GrapheneBridgeEndpoint endpoint = endpoint(browser);
+        if (endpoint != null) {
+            endpoint.onMainFrameRequest(jarUrl);
+        }
+    }
+
+    public void onMainFrameCommit(CefBrowser browser, String committedUrl) {
+        GrapheneBridgeEndpoint endpoint = endpoint(browser);
+        if (endpoint != null) {
+            endpoint.onMainFrameCommit(committedUrl);
+        }
+    }
+
     public boolean onQuery(CefBrowser browser, boolean mainFrame, String frameUrl, String request, CefQueryCallback callback) {
         GrapheneBridgeEndpoint endpoint = endpoint(browser);
         if (endpoint == null) {
@@ -142,7 +162,7 @@ public final class GrapheneBridgeRuntime {
             return false;
         }
 
-        boolean handled = endpoint.handleQuery(request, callback, mainFrame, frameUrl);
+        boolean handled = endpoint.handleQuery(request, callback, mainFrame, frameUrl, bundledPages.mountsOriginOf(frameUrl));
         DEBUG_LOGGER.debugIfEnabled(logger -> {
             int requestSize = request == null ? 0 : request.length();
             logger.debug(

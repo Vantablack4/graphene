@@ -3,10 +3,12 @@ package tytoo.grapheneui.internal.url;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * Maps web URLs under registered prefixes to resources inside the mod jars, so a page can keep a web origin (and
@@ -19,9 +21,15 @@ public final class GrapheneBundledPages {
     private static final String INDEX_PAGE = "index.html";
 
     private final List<Mount> mounts;
+    private final Set<String> mountOrigins;
 
     private GrapheneBundledPages(List<Mount> mounts) {
         this.mounts = List.copyOf(mounts);
+        Set<String> origins = new HashSet<>();
+        for (Mount mount : this.mounts) {
+            origins.add(mount.origin());
+        }
+        this.mountOrigins = Set.copyOf(origins);
     }
 
     public static GrapheneBundledPages empty() {
@@ -79,47 +87,77 @@ public final class GrapheneBundledPages {
     }
 
     /**
-     * Returns the classpath resource that serves {@code url}, or {@code null} when no prefix covers it. A path that
-     * tries to climb out of its directory is never served.
+     * Says how {@code url} is answered: not covered by any prefix (it goes to the network), covered and served from
+     * the jar resource {@link Resolution#resourcePath()}, or covered but refused because its path tries to leave the
+     * directory or is malformed. A refused URL is answered locally and never reaches the network.
      */
-    public String resourcePathFor(String url) {
+    public Resolution resolve(String url) {
         if (mounts.isEmpty() || url == null) {
-            return null;
+            return Resolution.NOT_MOUNTED;
         }
 
-        URI uri = parse(url.strip());
+        String value = url.strip();
+        URI uri = parse(value);
         if (uri == null || uri.getScheme() == null || uri.getHost() == null || uri.getPath() == null) {
-            return null;
+            return underSomePrefix(value) ? Resolution.REFUSED : Resolution.NOT_MOUNTED;
         }
 
         String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
         String host = uri.getHost().toLowerCase(Locale.ROOT);
         int port = effectivePort(scheme, uri.getPort());
         String path = uri.getPath();
+        String rawPath = uri.getRawPath() == null ? path : uri.getRawPath();
         for (Mount mount : mounts) {
-            if (!mount.scheme().equals(scheme) || !mount.host().equals(host) || mount.port() != port
-                    || !path.startsWith(mount.path())) {
+            if (!mount.scheme().equals(scheme) || !mount.host().equals(host) || mount.port() != port) {
+                continue;
+            }
+
+            if (!path.startsWith(mount.path())) {
+                if (rawPath.startsWith(mount.rawPath())) {
+                    return Resolution.REFUSED;
+                }
+
                 continue;
             }
 
             String remainder = path.substring(mount.path().length());
             if (remainder.contains("\\") || remainder.contains("//") || hasDotSegment(remainder)
                     || remainder.startsWith(PATH_DELIMITER)) {
-                return null;
+                return Resolution.REFUSED;
             }
 
             if (remainder.isEmpty() || remainder.endsWith(PATH_DELIMITER)) {
                 remainder = remainder + INDEX_PAGE;
             }
 
-            return mount.resourceDirectory() + remainder;
+            return new Resolution(true, mount.resourceDirectory() + remainder);
         }
 
-        return null;
+        return Resolution.NOT_MOUNTED;
+    }
+
+    /**
+     * Returns whether some prefix lives on the origin of {@code url}. Documents on such an origin get the bridge only
+     * when Graphene served them from the jar.
+     */
+    public boolean mountsOriginOf(String url) {
+        String origin = GrapheneOrigins.of(url);
+        return origin != null && mountOrigins.contains(origin);
     }
 
     public boolean isEmpty() {
         return mounts.isEmpty();
+    }
+
+    private boolean underSomePrefix(String url) {
+        for (Mount mount : mounts) {
+            String prefix = mount.origin() + mount.rawPath();
+            if (url.regionMatches(true, 0, prefix, 0, prefix.length())) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static Mount mount(String urlPrefix, String resourceDirectory) {
@@ -130,7 +168,9 @@ public final class GrapheneBundledPages {
                 uri.getHost().toLowerCase(Locale.ROOT),
                 effectivePort(scheme, uri.getPort()),
                 uri.getPath(),
-                validateResourceDirectory(resourceDirectory)
+                uri.getRawPath(),
+                validateResourceDirectory(resourceDirectory),
+                Objects.requireNonNull(GrapheneOrigins.of(urlPrefix), "urlPrefix origin")
         );
     }
 
@@ -161,6 +201,15 @@ public final class GrapheneBundledPages {
         return false;
     }
 
-    private record Mount(String scheme, String host, int port, String path, String resourceDirectory) {
+    public record Resolution(boolean mounted, String resourcePath) {
+        public static final Resolution NOT_MOUNTED = new Resolution(false, null);
+        public static final Resolution REFUSED = new Resolution(true, null);
+
+        public boolean refused() {
+            return mounted && resourcePath == null;
+        }
+    }
+
+    private record Mount(String scheme, String host, int port, String path, String rawPath, String resourceDirectory, String origin) {
     }
 }

@@ -29,6 +29,7 @@ public final class GrapheneClasspathSchemeHandlerFactory implements CefSchemeHan
     private static final String PATH_DELIMITER = "/";
     private static final String ASSETS_PREFIX = "assets" + PATH_DELIMITER;
     private static final String OPAQUE_ORIGIN = "null";
+    private static final String REFUSED_RESOURCE_PATH = "";
 
     static String opaqueCorsOriginFor(String requestUrl, boolean resourceFound) {
         if (!resourceFound || GrapheneAppUrls.normalizeResourcePath(requestUrl).isBlank()) {
@@ -40,6 +41,10 @@ public final class GrapheneClasspathSchemeHandlerFactory implements CefSchemeHan
 
     static CefResourceHandler bundledResource(String resourcePath) {
         return new ClasspathResourceHandler(resourcePath);
+    }
+
+    static CefResourceHandler refusedResource() {
+        return new ClasspathResourceHandler(REFUSED_RESOURCE_PATH);
     }
 
     @Override
@@ -103,7 +108,9 @@ public final class GrapheneClasspathSchemeHandlerFactory implements CefSchemeHan
             String requestUrl = request.getURL();
             String resourcePath = fixedResourcePath != null ? fixedResourcePath : normalizeResourcePath(requestUrl);
             long startedAt = System.nanoTime();
-            ResourceBytesResult resourceBytesResult = readResourceBytes(resourcePath);
+            ResourceBytesResult resourceBytesResult = REFUSED_RESOURCE_PATH.equals(fixedResourcePath)
+                    ? ResourceBytesResult.notFound()
+                    : readResourceBytes(resourcePath);
             if (GrapheneOpenTrace.isActive()) {
                 GrapheneOpenTrace.mark(null, "resource.read", resourcePath + " " + (System.nanoTime() - startedAt) / 1_000_000.0D + "ms");
             }

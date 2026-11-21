@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * One full-screen web view that counts every bridge call Java receives, by channel, and keeps the last payload.
  */
 final class BridgeCallerScreen extends Screen {
-    private static final List<String> EVENT_CHANNELS = List.of("test:report", "test:frame", "test:popup", "test:bundled");
+    private static final List<String> EVENT_CHANNELS = List.of("test:report", "test:frame", "test:popup", "test:bundled", "test:outside");
     private static final String REQUEST_CHANNEL = "test:main";
 
     private final String url;

@@ -8,6 +8,7 @@ import org.cef.handler.CefResourceRequestHandler;
 import org.cef.handler.CefResourceRequestHandlerAdapter;
 import org.cef.misc.BoolRef;
 import org.cef.network.CefRequest;
+import tytoo.grapheneui.internal.bridge.GrapheneBridgeRuntime;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 import tytoo.grapheneui.internal.mc.McClient;
 import tytoo.grapheneui.internal.url.GrapheneBundledPages;
@@ -18,13 +19,15 @@ final class GrapheneCefRequestHandler extends CefRequestHandlerAdapter {
     private static final GrapheneDebugLogger DEBUG_LOGGER = GrapheneDebugLogger.of(GrapheneCefRequestHandler.class);
 
     private final GrapheneBundledPages bundledPages;
+    private final GrapheneBridgeRuntime bridgeRuntime;
 
     GrapheneCefRequestHandler() {
-        this(GrapheneBundledPages.empty());
+        this(GrapheneBundledPages.empty(), null);
     }
 
-    GrapheneCefRequestHandler(GrapheneBundledPages bundledPages) {
+    GrapheneCefRequestHandler(GrapheneBundledPages bundledPages, GrapheneBridgeRuntime bridgeRuntime) {
         this.bundledPages = Objects.requireNonNull(bundledPages, "bundledPages");
+        this.bridgeRuntime = bridgeRuntime;
     }
 
     static boolean redirectsTabOpenIntoBrowser(boolean fromMainFrame, String targetUrl) {
@@ -53,25 +56,43 @@ final class GrapheneCefRequestHandler extends CefRequestHandlerAdapter {
             String requestInitiator,
             BoolRef disableDefaultHandling
     ) {
-        String resourcePath = request == null ? null : bundledPages.resourcePathFor(request.getURL());
-        if (resourcePath == null) {
+        if (request == null) {
             return null;
         }
 
-        DEBUG_LOGGER.debug("Serving bundled page resource url={} resource={}", request.getURL(), resourcePath);
-        return new BundledPageRequestHandler(resourcePath);
+        String url = request.getURL();
+        GrapheneBundledPages.Resolution resolution = bundledPages.resolve(url);
+        boolean mainFrameDocument = isNavigation
+                && (frame == null || frame.isMain())
+                && request.getResourceType() == CefRequest.ResourceType.RT_MAIN_FRAME;
+        if (mainFrameDocument && bridgeRuntime != null && browser != null) {
+            bridgeRuntime.onMainFrameRequest(browser, resolution.resourcePath() == null ? null : url);
+        }
+
+        if (!resolution.mounted()) {
+            return null;
+        }
+
+        DEBUG_LOGGER.debug("Serving bundled page resource url={} resource={}", url, resolution.resourcePath());
+        return new BundledPageRequestHandler(resolution);
+    }
+
+    static CefResourceHandler bundledResponse(GrapheneBundledPages.Resolution resolution) {
+        return resolution.refused()
+                ? GrapheneClasspathSchemeHandlerFactory.refusedResource()
+                : GrapheneClasspathSchemeHandlerFactory.bundledResource(resolution.resourcePath());
     }
 
     private static final class BundledPageRequestHandler extends CefResourceRequestHandlerAdapter {
-        private final String resourcePath;
+        private final GrapheneBundledPages.Resolution resolution;
 
-        private BundledPageRequestHandler(String resourcePath) {
-            this.resourcePath = resourcePath;
+        private BundledPageRequestHandler(GrapheneBundledPages.Resolution resolution) {
+            this.resolution = resolution;
         }
 
         @Override
         public CefResourceHandler getResourceHandler(CefBrowser browser, CefFrame frame, CefRequest request) {
-            return GrapheneClasspathSchemeHandlerFactory.bundledResource(resourcePath);
+            return bundledResponse(resolution);
         }
     }
 }

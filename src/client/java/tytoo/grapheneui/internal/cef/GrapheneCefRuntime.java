@@ -162,6 +162,7 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
             }
 
             bundledPages = bundledPages(validatedContainerConfigs);
+            bridgeRuntime.useBundledPages(bundledPages);
             registerShutdownHook();
             CompletableFuture<Void> startupFuture = CompletableFuture.runAsync(
                     () -> initializeInternal(validatedGlobalConfig),

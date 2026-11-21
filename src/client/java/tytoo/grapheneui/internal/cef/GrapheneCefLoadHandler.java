@@ -66,6 +66,10 @@ final class GrapheneCefLoadHandler extends CefLoadHandlerAdapter {
                 transitionType
         );
         traceMainFrame(browser, frame, "load.start.cef");
+        if (isMainFrame(frame) && browser != null) {
+            // On the CEF thread, before the new document can send a query.
+            bridgeRuntime.onMainFrameCommit(browser, frame == null ? browser.getURL() : frame.getURL());
+        }
 
         McClient.runOnMainThread(() -> {
             traceMainFrame(browser, frame, "load.start.main");

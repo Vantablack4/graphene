@@ -135,9 +135,15 @@ GrapheneCore.register(MyMod.class, GrapheneConfig.builder()
         .build());
 ```
 
-Every request under the prefix is answered from the jar directory (a path ending in `/` serves `index.html`); paths
-that try to leave the directory are refused, and other paths on the host still go to the network. Register before
-Graphene starts, like the HTTP mode.
+Every request under the prefix is answered from the jar directory (a path ending in `/` serves `index.html`). A path
+under the prefix that tries to leave the directory, or cannot be read, is answered with `404` by Graphene and never
+goes to the network. Other paths on the host still go to the network. Register before Graphene starts, like the HTTP
+mode.
+
+On that origin the bridge answers only the document Graphene served from the jar (see
+[Who May Call The Bridge](bridge.md#who-may-call-the-bridge)). A service worker that the host once registered for the
+origin could answer a navigation before Graphene sees it; such a document is not served from the jar, so it gets no
+bridge, but it can still show its own content in the surface.
 
 ## Recommendations
 

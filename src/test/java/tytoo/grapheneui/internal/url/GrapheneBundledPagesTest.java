@@ -6,7 +6,7 @@ import tytoo.grapheneui.api.config.GrapheneContainerConfig;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -17,35 +17,58 @@ final class GrapheneBundledPagesTest {
 
     @Test
     void urlsUnderThePrefixComeFromTheJarDirectory() {
-        assertEquals(DIRECTORY + "index.html", PAGES.resourcePathFor(PREFIX + "index.html?mode=editor&assetBase=x"));
-        assertEquals(DIRECTORY + "assets/index.js", PAGES.resourcePathFor(PREFIX + "assets/index.js"));
-        assertEquals(DIRECTORY + "fonts/knightwood.woff2", PAGES.resourcePathFor(PREFIX + "fonts/knightwood.woff2#x"));
-        assertEquals(DIRECTORY + "index.html", PAGES.resourcePathFor(PREFIX));
-        assertEquals(DIRECTORY + "index.html", PAGES.resourcePathFor("HTTPS://CDN.vantablack4.com:443/webassets/manuscript/bundled/index.html"));
+        assertEquals(DIRECTORY + "index.html", path(PAGES, PREFIX + "index.html?mode=editor&assetBase=x"));
+        assertEquals(DIRECTORY + "assets/index.js", path(PAGES, PREFIX + "assets/index.js"));
+        assertEquals(DIRECTORY + "fonts/knightwood.woff2", path(PAGES, PREFIX + "fonts/knightwood.woff2#x"));
+        assertEquals(DIRECTORY + "index.html", path(PAGES, PREFIX));
+        assertEquals(DIRECTORY + "index.html", path(PAGES, "HTTPS://CDN.vantablack4.com:443/webassets/manuscript/bundled/index.html"));
     }
 
     @Test
     void urlsOutsideThePrefixStayOnTheNetwork() {
-        assertNull(PAGES.resourcePathFor("https://cdn.vantablack4.com/webassets/manuscript/game-assets/manifest.json"));
-        assertNull(PAGES.resourcePathFor("https://cdn.vantablack4.com/webassets/manuscript/v2/index.html"));
-        assertNull(PAGES.resourcePathFor("https://cdn.vantablack4.com/webassets/manuscript/bundled"));
-        assertNull(PAGES.resourcePathFor("http://cdn.vantablack4.com/webassets/manuscript/bundled/index.html"));
-        assertNull(PAGES.resourcePathFor("https://cdn.vantablack4.com:8443/webassets/manuscript/bundled/index.html"));
-        assertNull(PAGES.resourcePathFor("https://evil.example/webassets/manuscript/bundled/index.html"));
-        assertNull(PAGES.resourcePathFor("app://assets/mod_manuscript/web/manuscript/index.html"));
-        assertNull(PAGES.resourcePathFor(null));
-        assertNull(GrapheneBundledPages.empty().resourcePathFor(PREFIX + "index.html"));
+        for (String url : new String[]{
+                "https://cdn.vantablack4.com/webassets/manuscript/game-assets/manifest.json",
+                "https://cdn.vantablack4.com/webassets/manuscript/v2/index.html",
+                "https://cdn.vantablack4.com/webassets/manuscript/bundled",
+                "http://cdn.vantablack4.com/webassets/manuscript/bundled/index.html",
+                "https://cdn.vantablack4.com:8443/webassets/manuscript/bundled/index.html",
+                "https://evil.example/webassets/manuscript/bundled/index.html",
+                "https://cdn.vantablack4.com/webassets/manuscript/game-assets/a%zz.png",
+                "app://assets/mod_manuscript/web/manuscript/index.html"
+        }) {
+            assertEquals(GrapheneBundledPages.Resolution.NOT_MOUNTED, PAGES.resolve(url), url);
+        }
+        assertEquals(GrapheneBundledPages.Resolution.NOT_MOUNTED, PAGES.resolve(null));
+        assertEquals(GrapheneBundledPages.Resolution.NOT_MOUNTED, GrapheneBundledPages.empty().resolve(PREFIX + "index.html"));
     }
 
     @Test
-    void pathsCannotClimbOutOfTheDirectory() {
-        assertNull(PAGES.resourcePathFor(PREFIX + "../../../mod_characters/web/index.html"));
-        assertNull(PAGES.resourcePathFor(PREFIX + "%2e%2e/%2e%2e/secret.json"));
-        assertNull(PAGES.resourcePathFor(PREFIX + "assets/..%2F..%2Fx.js"));
-        assertNull(PAGES.resourcePathFor(PREFIX + "assets/%5c..%5cx.js"));
-        assertNull(PAGES.resourcePathFor(PREFIX + "/etc/passwd"));
-        assertNull(PAGES.resourcePathFor(PREFIX + "a//b.js"));
-        assertNull(PAGES.resourcePathFor(PREFIX + "%zz"));
+    void pathsCannotClimbOutOfTheDirectoryAndNeverReachTheNetwork() {
+        for (String url : new String[]{
+                PREFIX + "../../../mod_characters/web/index.html",
+                PREFIX + "%2e%2e/%2e%2e/secret.json",
+                PREFIX + "assets/..%2F..%2Fx.js",
+                PREFIX + "assets/%5c..%5cx.js",
+                PREFIX + "refused%5Cpath.js",
+                PREFIX + "/etc/passwd",
+                PREFIX + "a//b.js",
+                PREFIX + "%zz",
+                PREFIX + "a b.js",
+                "https://cdn.vantablack4.com/webassets/manuscript/bundled%2F..%2Fv2/index.html"
+        }) {
+            GrapheneBundledPages.Resolution resolution = PAGES.resolve(url);
+            assertTrue(resolution.mounted() && resolution.refused(), url + " -> " + resolution);
+        }
+    }
+
+    @Test
+    void originsWithBundledPagesAreKnown() {
+        assertTrue(PAGES.mountsOriginOf("https://cdn.vantablack4.com/webassets/manuscript/game-assets/evil.html"));
+        assertTrue(PAGES.mountsOriginOf("HTTPS://CDN.vantablack4.com:443/"));
+        assertFalse(PAGES.mountsOriginOf("http://cdn.vantablack4.com/webassets/manuscript/bundled/index.html"));
+        assertFalse(PAGES.mountsOriginOf("app://assets/mod_manuscript/web/manuscript/index.html"));
+        assertFalse(PAGES.mountsOriginOf("about:blank"));
+        assertFalse(GrapheneBundledPages.empty().mountsOriginOf(PREFIX));
     }
 
     @Test
@@ -55,8 +78,8 @@ final class GrapheneBundledPagesTest {
                 "https://cdn.example/site/editor/", "assets/b/editor/"
         ));
 
-        assertEquals("assets/b/editor/index.html", pages.resourcePathFor("https://cdn.example/site/editor/index.html"));
-        assertEquals("assets/a/site/other.html", pages.resourcePathFor("https://cdn.example/site/other.html"));
+        assertEquals("assets/b/editor/index.html", path(pages, "https://cdn.example/site/editor/index.html"));
+        assertEquals("assets/a/site/other.html", path(pages, "https://cdn.example/site/other.html"));
     }
 
     @Test
@@ -92,5 +115,9 @@ final class GrapheneBundledPagesTest {
         assertTrue(GrapheneContainerConfig.defaults().bundledPages().isEmpty());
         assertEquals(config, GrapheneContainerConfig.builder().bundledPages(PREFIX, DIRECTORY).build());
         assertThrows(IllegalArgumentException.class, () -> GrapheneContainerConfig.builder().bundledPages(PREFIX, "web/"));
+    }
+
+    private static String path(GrapheneBundledPages pages, String url) {
+        return pages.resolve(url).resourcePath();
     }
 }
