@@ -36,8 +36,6 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
     private final GrapheneBridgeCallerPolicy callerPolicy = new GrapheneBridgeCallerPolicy();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private volatile GrapheneBrowser browser;
-    private volatile String pendingJarDocumentUrl;
-    private volatile boolean jarDocument;
     private volatile boolean awaitingFirstPage;
     private long lastBootstrapFallbackAttemptNanos;
     private String lastBootstrapFallbackUrl;
@@ -245,36 +243,12 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
         callerPolicy.trust(pageUrl);
     }
 
-    /**
-     * Records the main-frame document request Graphene is about to answer: {@code jarUrl} when it serves it from the
-     * jar, {@code null} when the network (or anything else) does.
-     */
-    public void onMainFrameRequest(String jarUrl) {
-        pendingJarDocumentUrl = jarUrl;
-    }
-
-    /**
-     * A new main-frame document committed at {@code committedUrl}. It counts as served from the jar only when it is
-     * the document Graphene last served from the jar for this frame.
-     */
-    public void onMainFrameCommit(String committedUrl) {
-        String jarUrl = pendingJarDocumentUrl;
-        pendingJarDocumentUrl = null;
-        jarDocument = jarUrl != null && withoutFragment(jarUrl).equals(withoutFragment(committedUrl));
-    }
-
-    public boolean handleQuery(
-            String requestJson,
-            CefQueryCallback callback,
-            boolean mainFrame,
-            String frameUrl,
-            boolean jarDocumentRequired
-    ) {
+    public boolean handleQuery(String requestJson, CefQueryCallback callback, boolean mainFrame, String frameUrl) {
         if (closed.get()) {
             return false;
         }
 
-        GrapheneBridgeCallerPolicy.Decision decision = callerPolicy.decide(mainFrame, frameUrl, jarDocumentRequired, jarDocument);
+        GrapheneBridgeCallerPolicy.Decision decision = callerPolicy.decide(mainFrame, frameUrl);
         if (!decision.allowed()) {
             callback.failure(REFUSED_CALLER_ERROR_CODE, "Graphene bridge refused the call: " + decision);
             DEBUG_LOGGER.debug("Refused bridge query browserId={} decision={} frameUrl={}", browserIdentifier(), decision, frameUrl);
@@ -304,15 +278,6 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
         requestLifecycle.failAllForClose();
         handlers.clear();
         DEBUG_LOGGER.debug("Closed bridge endpoint browserId={}", browserIdentifier());
-    }
-
-    private static String withoutFragment(String url) {
-        if (url == null) {
-            return "";
-        }
-
-        int fragment = url.indexOf('#');
-        return fragment < 0 ? url : url.substring(0, fragment);
     }
 
     private void onBridgeReady() {

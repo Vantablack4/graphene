@@ -38,7 +38,6 @@ public final class GrapheneCefInstaller {
             "graphene.cef.allowUnsafeSoftwareWebGl";
     private static final List<String> DISABLED_CHROME_FEATURES = List.of(
             "AutofillServerCommunication",
-            "BackForwardCache",
             "MediaRouter",
             "OptimizationHints",
             "OptimizationTargetPrediction"

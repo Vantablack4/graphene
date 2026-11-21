@@ -12,6 +12,7 @@ import tytoo.grapheneui.api.bridge.GrapheneBridge;
 import tytoo.grapheneui.api.config.GrapheneContainerConfig;
 import tytoo.grapheneui.api.config.GrapheneGlobalConfig;
 import tytoo.grapheneui.api.config.GrapheneHttpConfig;
+import tytoo.grapheneui.api.config.GrapheneProxiedAssets;
 import tytoo.grapheneui.api.runtime.GrapheneHttpServer;
 import tytoo.grapheneui.api.runtime.GrapheneRuntime;
 import tytoo.grapheneui.internal.bridge.GrapheneBridgeEndpoint;
@@ -162,7 +163,6 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
             }
 
             bundledPages = bundledPages(validatedContainerConfigs);
-            bridgeRuntime.useBundledPages(bundledPages);
             registerShutdownHook();
             CompletableFuture<Void> startupFuture = CompletableFuture.runAsync(
                     () -> initializeInternal(validatedGlobalConfig),
@@ -469,11 +469,13 @@ public final class GrapheneCefRuntime implements GrapheneRuntime {
 
     private static GrapheneBundledPages bundledPages(Map<String, GrapheneContainerConfig> containerConfigs) {
         LinkedHashMap<String, String> resourceDirectoriesByUrlPrefix = new LinkedHashMap<>();
+        LinkedHashMap<String, GrapheneProxiedAssets> proxiesByUrlPrefix = new LinkedHashMap<>();
         for (GrapheneContainerConfig containerConfig : containerConfigs.values()) {
             resourceDirectoriesByUrlPrefix.putAll(containerConfig.bundledPages());
+            proxiesByUrlPrefix.putAll(containerConfig.proxiedAssets());
         }
 
-        return GrapheneBundledPages.of(resourceDirectoriesByUrlPrefix);
+        return GrapheneBundledPages.of(resourceDirectoriesByUrlPrefix, proxiesByUrlPrefix);
     }
 
     private void startHttpServerIfConfigured(Map<String, GrapheneContainerConfig> containerConfigs) {

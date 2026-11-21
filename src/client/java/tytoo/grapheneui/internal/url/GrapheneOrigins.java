@@ -1,6 +1,5 @@
 package tytoo.grapheneui.internal.url;
 
-import java.net.IDN;
 import java.util.Locale;
 
 /**
@@ -19,9 +18,11 @@ public final class GrapheneOrigins {
 
     /**
      * Returns the origin of {@code url} as {@code scheme://host[:port]}: http and https with the scheme and host in
-     * lower case (IDN hosts in their ASCII form) and the default port dropped, Graphene's {@code app} scheme with its
+     * lower case and the default port dropped, Graphene's {@code app} scheme with its
      * host, and Graphene's {@code classpath} scheme as {@code classpath://}. Every other URL, about:, data:, blob:,
-     * javascript:, file: and malformed ones among them, has no origin and gives {@code null}.
+     * javascript:, file: and malformed ones among them, has no origin and gives {@code null}. Hosts must already be
+     * ASCII (punycode for international names, as Chromium reports them): Java and Chromium map some Unicode names
+     * differently, so a Unicode host has no origin rather than a guessed one.
      */
     public static String of(String url) {
         if (url == null) {
@@ -86,26 +87,21 @@ public final class GrapheneOrigins {
         }
 
         if (host.startsWith("[")) {
-            return host.endsWith("]") && host.length() > 2 ? host.toLowerCase(Locale.ROOT) : null;
+            return host.matches("\\[[0-9A-Fa-f:.]+]") ? host.toLowerCase(Locale.ROOT) : null;
         }
 
         if (!isPlainHost(host)) {
             return null;
         }
 
-        try {
-            String ascii = IDN.toASCII(host, IDN.ALLOW_UNASSIGNED).toLowerCase(Locale.ROOT);
-            return ascii.isEmpty() ? null : ascii;
-        } catch (IllegalArgumentException ignored) {
-            // A host IDN cannot convert is not one Chromium would load either.
-            return null;
-        }
+        return host.toLowerCase(Locale.ROOT);
     }
 
     private static boolean isPlainHost(String host) {
         for (int index = 0; index < host.length(); index++) {
             char character = host.charAt(index);
-            if (character <= ' ' || character == '%' || character == '[' || character == ']' || character == ':') {
+            boolean outsideAscii = character <= ' ' || character > '~';
+            if (outsideAscii || character == '%' || character == '[' || character == ']' || character == ':') {
                 return false;
             }
         }

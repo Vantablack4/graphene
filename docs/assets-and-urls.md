@@ -122,28 +122,35 @@ Important behavior:
 - Successful HTTP assets advertise byte-range support. Single `bytes=` ranges return `206 Partial Content`, which lets
   Chromium seek and stream bundled media without downloading the whole file first.
 
-## Bundled Pages On A Web Origin
+## Bundled Pages On An Owned Origin
 
-A page that reads data from a web host (for example a CDN without CORS headers) can be served from the jar under
-that host's origin, so its code cannot be changed by whoever controls the host:
+A page that needs a web origin (for example to read remote data without CORS and draw it on a canvas it can export)
+can run on an origin Graphene owns entirely, with its code from the jar and its remote data through a read-only proxy:
 
 ```java
 GrapheneCore.register(MyMod.class, GrapheneConfig.builder()
         .container(GrapheneContainerConfig.builder()
-                .bundledPages("https://cdn.example.com/my-mod/bundled/", "assets/my_mod/web/page/")
+                .bundledPages("https://my-mod.graphene.invalid/page/", "assets/my_mod/web/page/")
+                .proxiedAssets("https://my-mod.graphene.invalid/cdn/", "https://cdn.example.com/my-mod/",
+                        Set.of("json", "webp", "png"))
                 .build())
         .build());
 ```
 
-Every request under the prefix is answered from the jar directory (a path ending in `/` serves `index.html`). A path
-under the prefix that tries to leave the directory, or cannot be read, is answered with `404` by Graphene and never
-goes to the network. Other paths on the host still go to the network. Register before Graphene starts, like the HTTP
-mode.
+- Every request under a `bundledPages` prefix is answered from the jar directory (a path ending in `/` serves
+  `index.html`).
+- Every request under a `proxiedAssets` prefix is fetched by Java from the upstream directory plus the same path:
+  GET only, the listed extensions only (never HTML, SVG, XML, scripts, styles, WebAssembly or PDF), a plain path
+  (letters, digits, `.`, `_`, `-`, no dot segments, no query), nothing forwarded from the page (no cookies, headers or
+  query), no redirects, at most 32 MiB. The response type comes from the extension and carries
+  `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. An upstream 404 is a local 404; any other
+  upstream answer or failure is a local 502. The fetch runs on Graphene's own threads, not CEF's IO thread.
+- Every other request on the origin, and any path that tries to leave a mount, is answered with a local error and
+  never reaches the network. Use a host nobody else serves, ideally under `.invalid`, so a request that Graphene
+  missed fails instead of reaching someone's server.
 
-On that origin the bridge answers only the document Graphene served from the jar (see
-[Who May Call The Bridge](bridge.md#who-may-call-the-bridge)). A service worker that the host once registered for the
-origin could answer a navigation before Graphene sees it; such a document is not served from the jar, so it gets no
-bridge, but it can still show its own content in the surface.
+Because only the mods' own content lives on the origin, the bridge trusts it like any other page origin (see
+[Who May Call The Bridge](bridge.md#who-may-call-the-bridge)). Register before Graphene starts, like the HTTP mode.
 
 ## Recommendations
 

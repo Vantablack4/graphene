@@ -2,8 +2,10 @@ package tytoo.grapheneui.internal.url;
 
 import org.junit.jupiter.api.Test;
 import tytoo.grapheneui.api.config.GrapheneContainerConfig;
+import tytoo.grapheneui.api.config.GrapheneProxiedAssets;
 
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -11,9 +13,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class GrapheneBundledPagesTest {
-    private static final String PREFIX = "https://cdn.vantablack4.com/webassets/manuscript/bundled/";
+    private static final String SITE = "https://manuscript.graphene.invalid";
+    private static final String PREFIX = SITE + "/editor/";
+    private static final String PROXY_PREFIX = SITE + "/cdn/";
     private static final String DIRECTORY = "assets/mod_manuscript/web/manuscript/";
-    private static final GrapheneBundledPages PAGES = GrapheneBundledPages.of(Map.of(PREFIX, DIRECTORY));
+    private static final String UPSTREAM = "https://cdn.vantablack4.com/webassets/manuscript/";
+    private static final GrapheneBundledPages PAGES = GrapheneBundledPages.of(
+            Map.of(PREFIX, DIRECTORY),
+            Map.of(PROXY_PREFIX, new GrapheneProxiedAssets(UPSTREAM, Set.of("json", "webp", "png", "otf", "ttf")))
+    );
 
     @Test
     void urlsUnderThePrefixComeFromTheJarDirectory() {
@@ -21,54 +29,91 @@ final class GrapheneBundledPagesTest {
         assertEquals(DIRECTORY + "assets/index.js", path(PAGES, PREFIX + "assets/index.js"));
         assertEquals(DIRECTORY + "fonts/knightwood.woff2", path(PAGES, PREFIX + "fonts/knightwood.woff2#x"));
         assertEquals(DIRECTORY + "index.html", path(PAGES, PREFIX));
-        assertEquals(DIRECTORY + "index.html", path(PAGES, "HTTPS://CDN.vantablack4.com:443/webassets/manuscript/bundled/index.html"));
+        assertEquals(DIRECTORY + "index.html", path(PAGES, "HTTPS://MANUSCRIPT.graphene.invalid:443/editor/index.html"));
     }
 
     @Test
-    void urlsOutsideThePrefixStayOnTheNetwork() {
+    void proxiedAssetsMapToTheFixedUpstream() {
+        assertEquals(UPSTREAM + "game-assets/manifest.json", upstream(PROXY_PREFIX + "game-assets/manifest.json"));
+        assertEquals(
+                UPSTREAM + "game-assets/sandbox-ui/parchment-frame-idle.webp",
+                upstream(PROXY_PREFIX + "game-assets/sandbox-ui/parchment-frame-idle.webp")
+        );
+        assertEquals(
+                UPSTREAM + "game-assets/text-system/atlases/atlas-548-inkulinatiyaza-regular-sdf-atlas.png",
+                upstream(PROXY_PREFIX + "game-assets/text-system/atlases/atlas-548-inkulinatiyaza-regular-sdf-atlas.png")
+        );
+        assertEquals(UPSTREAM + "game-assets/fonts/inter-regular.otf", upstream(PROXY_PREFIX + "game-assets/fonts/inter-regular.otf"));
+    }
+
+    @Test
+    void proxiedPathsAndTypesOutsideTheAllowListAreRefusedLocally() {
         for (String url : new String[]{
-                "https://cdn.vantablack4.com/webassets/manuscript/game-assets/manifest.json",
-                "https://cdn.vantablack4.com/webassets/manuscript/v2/index.html",
-                "https://cdn.vantablack4.com/webassets/manuscript/bundled",
-                "http://cdn.vantablack4.com/webassets/manuscript/bundled/index.html",
-                "https://cdn.vantablack4.com:8443/webassets/manuscript/bundled/index.html",
-                "https://evil.example/webassets/manuscript/bundled/index.html",
-                "https://cdn.vantablack4.com/webassets/manuscript/game-assets/a%zz.png",
-                "app://assets/mod_manuscript/web/manuscript/index.html"
+                PROXY_PREFIX + "game-assets/page.html",
+                PROXY_PREFIX + "game-assets/icon.svg",
+                PROXY_PREFIX + "game-assets/run.js",
+                PROXY_PREFIX + "game-assets/manifest.json.html",
+                PROXY_PREFIX + "game-assets/noextension",
+                PROXY_PREFIX + "game-assets/manifest.JSON",
+                PROXY_PREFIX + "game-assets/manifest.json?v=1",
+                PROXY_PREFIX + "game-assets/.hidden.json",
+                PROXY_PREFIX + "game-assets/a%20b.json",
+                PROXY_PREFIX + "game-assets/a%252e%252e/b.json",
+                PROXY_PREFIX + "game-assets/%2e%2e/%2e%2e/secret.json",
+                PROXY_PREFIX + "game-assets/a%5Cb.json",
+                PROXY_PREFIX + "game-assets/a%3Fb.json",
+                PROXY_PREFIX + "game-assets//manifest.json",
+                PROXY_PREFIX + "/game-assets/manifest.json",
+                PROXY_PREFIX
         }) {
-            assertEquals(GrapheneBundledPages.Resolution.NOT_MOUNTED, PAGES.resolve(url), url);
+            assertTrue(PAGES.resolve(url).refused(), url + " -> " + PAGES.resolve(url));
         }
-        assertEquals(GrapheneBundledPages.Resolution.NOT_MOUNTED, PAGES.resolve(null));
-        assertEquals(GrapheneBundledPages.Resolution.NOT_MOUNTED, GrapheneBundledPages.empty().resolve(PREFIX + "index.html"));
     }
 
     @Test
-    void pathsCannotClimbOutOfTheDirectoryAndNeverReachTheNetwork() {
+    void theOwnedOriginNeverFallsThroughToTheNetwork() {
         for (String url : new String[]{
+                SITE + "/",
+                SITE + "/favicon.ico",
+                SITE + "/outside/network.html",
+                SITE + "/editor",
+                SITE + "/cdnx/manifest.json",
+                SITE + "/editor/a%zz.js",
                 PREFIX + "../../../mod_characters/web/index.html",
                 PREFIX + "%2e%2e/%2e%2e/secret.json",
                 PREFIX + "assets/..%2F..%2Fx.js",
                 PREFIX + "assets/%5c..%5cx.js",
                 PREFIX + "refused%5Cpath.js",
-                PREFIX + "/etc/passwd",
-                PREFIX + "a//b.js",
-                PREFIX + "%zz",
-                PREFIX + "a b.js",
-                "https://cdn.vantablack4.com/webassets/manuscript/bundled%2F..%2Fv2/index.html"
+                PREFIX + "a//b.js"
         }) {
             GrapheneBundledPages.Resolution resolution = PAGES.resolve(url);
-            assertTrue(resolution.mounted() && resolution.refused(), url + " -> " + resolution);
+            assertTrue(resolution.owned() && resolution.refused(), url + " -> " + resolution);
         }
     }
 
     @Test
-    void originsWithBundledPagesAreKnown() {
-        assertTrue(PAGES.mountsOriginOf("https://cdn.vantablack4.com/webassets/manuscript/game-assets/evil.html"));
-        assertTrue(PAGES.mountsOriginOf("HTTPS://CDN.vantablack4.com:443/"));
-        assertFalse(PAGES.mountsOriginOf("http://cdn.vantablack4.com/webassets/manuscript/bundled/index.html"));
-        assertFalse(PAGES.mountsOriginOf("app://assets/mod_manuscript/web/manuscript/index.html"));
-        assertFalse(PAGES.mountsOriginOf("about:blank"));
-        assertFalse(GrapheneBundledPages.empty().mountsOriginOf(PREFIX));
+    void otherOriginsStayOnTheNetwork() {
+        for (String url : new String[]{
+                "https://cdn.vantablack4.com/webassets/manuscript/game-assets/manifest.json",
+                "http://manuscript.graphene.invalid/editor/index.html",
+                "https://manuscript.graphene.invalid:8443/editor/index.html",
+                "https://evil.example/editor/index.html",
+                "app://assets/mod_manuscript/web/manuscript/index.html",
+                "about:blank"
+        }) {
+            assertEquals(GrapheneBundledPages.Resolution.NOT_OWNED, PAGES.resolve(url), url);
+        }
+        assertEquals(GrapheneBundledPages.Resolution.NOT_OWNED, PAGES.resolve(null));
+        assertEquals(GrapheneBundledPages.Resolution.NOT_OWNED, GrapheneBundledPages.empty().resolve(PREFIX + "index.html"));
+    }
+
+    @Test
+    void ownedOriginsAreKnown() {
+        assertTrue(PAGES.ownsOriginOf(SITE + "/anything"));
+        assertTrue(PAGES.ownsOriginOf("HTTPS://Manuscript.Graphene.Invalid:443/"));
+        assertFalse(PAGES.ownsOriginOf("https://cdn.vantablack4.com/webassets/manuscript/game-assets/evil.html"));
+        assertFalse(PAGES.ownsOriginOf("about:blank"));
+        assertFalse(GrapheneBundledPages.empty().ownsOriginOf(PREFIX));
     }
 
     @Test
@@ -83,7 +128,7 @@ final class GrapheneBundledPagesTest {
     }
 
     @Test
-    void prefixesAndDirectoriesAreValidated() {
+    void prefixesDirectoriesUpstreamsAndExtensionsAreValidated() {
         for (String prefix : new String[]{
                 "https://cdn.example/site",
                 "ftp://cdn.example/site/",
@@ -91,33 +136,53 @@ final class GrapheneBundledPagesTest {
                 "https://user@cdn.example/site/",
                 "https://cdn.example/site/?x=1",
                 "https://cdn.example/site/../",
+                "https://fa\u00df.example/site/",
                 "not a url/"
         }) {
             assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateUrlPrefix(prefix), prefix);
         }
 
-        for (String directory : new String[]{
-                "assets/mod/web",
-                "mod/web/",
-                "assets/../mod/",
-                "assets/mod\\web/",
-                "assets//mod/"
-        }) {
+        for (String directory : new String[]{"assets/mod/web", "mod/web/", "assets/../mod/", "assets/mod\\web/", "assets//mod/"}) {
             assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateResourceDirectory(directory), directory);
         }
+
+        for (String upstream : new String[]{
+                "http://cdn.vantablack4.com/webassets/manuscript/",
+                "https://cdn.vantablack4.com/webassets/manuscript",
+                "https://user@cdn.vantablack4.com/x/",
+                "https://cdn.vantablack4.com/x/?a=1",
+                "file:///C:/x/"
+        }) {
+            assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateUpstreamBase(upstream), upstream);
+        }
+        assertEquals("http://127.0.0.1:20500/assets/", GrapheneBundledPages.validateUpstreamBase("http://127.0.0.1:20500/assets/"));
+
+        for (String extension : new String[]{"html", "svg", "js", "mjs", "css", "xml", "wasm", "pdf", "JSON", "", "a.b"}) {
+            assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateExtensions(Set.of(extension)), extension);
+        }
+        assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateExtensions(Set.of()));
     }
 
     @Test
-    void containerConfigCarriesItsBundledPages() {
-        GrapheneContainerConfig config = GrapheneContainerConfig.builder().bundledPages(PREFIX, DIRECTORY).build();
+    void containerConfigCarriesItsBundledPagesAndProxies() {
+        GrapheneContainerConfig config = GrapheneContainerConfig.builder()
+                .bundledPages(PREFIX, DIRECTORY)
+                .proxiedAssets(PROXY_PREFIX, UPSTREAM, Set.of("json"))
+                .build();
 
         assertEquals(Map.of(PREFIX, DIRECTORY), config.bundledPages());
+        assertEquals(Map.of(PROXY_PREFIX, new GrapheneProxiedAssets(UPSTREAM, Set.of("json"))), config.proxiedAssets());
         assertTrue(GrapheneContainerConfig.defaults().bundledPages().isEmpty());
-        assertEquals(config, GrapheneContainerConfig.builder().bundledPages(PREFIX, DIRECTORY).build());
+        assertTrue(GrapheneContainerConfig.defaults().proxiedAssets().isEmpty());
         assertThrows(IllegalArgumentException.class, () -> GrapheneContainerConfig.builder().bundledPages(PREFIX, "web/"));
+        assertThrows(IllegalArgumentException.class, () -> GrapheneContainerConfig.builder().proxiedAssets(PROXY_PREFIX, UPSTREAM, Set.of("html")));
     }
 
     private static String path(GrapheneBundledPages pages, String url) {
         return pages.resolve(url).resourcePath();
+    }
+
+    private static String upstream(String url) {
+        return PAGES.resolve(url).upstreamUrl();
     }
 }

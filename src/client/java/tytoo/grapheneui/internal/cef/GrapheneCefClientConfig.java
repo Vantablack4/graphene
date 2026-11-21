@@ -31,10 +31,7 @@ public final class GrapheneCefClientConfig {
         GrapheneCefDownloadHandler downloadHandler = new GrapheneCefDownloadHandler();
         GrapheneCefKeyboardHandler keyboardHandler = new GrapheneCefKeyboardHandler();
         GrapheneCefLifeSpanHandler lifeSpanHandler = new GrapheneCefLifeSpanHandler();
-        GrapheneCefRequestHandler requestHandler = new GrapheneCefRequestHandler(
-                Objects.requireNonNull(bundledPages, "bundledPages"),
-                validatedBridgeRuntime
-        );
+        GrapheneCefRequestHandler requestHandler = new GrapheneCefRequestHandler(Objects.requireNonNull(bundledPages, "bundledPages"));
 
         validatedClient.addLoadHandler(new GrapheneCefLoadHandler(validatedLoadEventBus, validatedBridgeRuntime));
         validatedClient.addDisplayHandler(new GrapheneCefDisplayHandler());

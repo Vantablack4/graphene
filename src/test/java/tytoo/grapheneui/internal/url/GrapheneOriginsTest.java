@@ -18,8 +18,7 @@ final class GrapheneOriginsTest {
         assertEquals("http://127.0.0.1:20417", GrapheneOrigins.of("http://127.0.0.1:20417/mods/mod_manuscript/index.html"));
         assertEquals("http://[::1]:8080", GrapheneOrigins.of("http://[::1]:8080/x"));
         assertEquals("http://[::1]", GrapheneOrigins.of("http://[::1]/x"));
-        assertEquals("https://xn--bcher-kva.example", GrapheneOrigins.of("https://bücher.example/x"));
-        assertEquals(GrapheneOrigins.of("https://xn--bcher-kva.example/"), GrapheneOrigins.of("https://BÜCHER.example/"));
+        assertEquals("https://xn--fa-hia.example", GrapheneOrigins.of("https://XN--FA-HIA.example/x"));
     }
 
     @Test
@@ -55,6 +54,15 @@ final class GrapheneOriginsTest {
         }) {
             assertNull(GrapheneOrigins.of(url), url);
         }
+    }
+
+    @Test
+    void unicodeHostsHaveNoOriginBecauseJavaAndChromiumMapThemDifferently() {
+        assertNull(GrapheneOrigins.of("https://faß.example/"));
+        assertNull(GrapheneOrigins.of("https://bücher.example/x"));
+        assertNull(GrapheneOrigins.of("https://cdn.vantablack4.com。evil.example/"));
+        assertNull(GrapheneOrigins.of("app://аssets/x"));
+        assertNull(GrapheneOrigins.of("http://[::ffff:1.2.3.4é]/"));
     }
 
     @Test

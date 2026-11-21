@@ -34,7 +34,7 @@ final class GrapheneCefInstallerTest {
         assertTrue(args.contains("--disable-sync"));
         assertTrue(args.contains("--no-pings"));
         assertEquals(
-                List.of("--disable-features=AutofillServerCommunication,BackForwardCache,MediaRouter,OptimizationHints,OptimizationTargetPrediction"),
+                List.of("--disable-features=AutofillServerCommunication,MediaRouter,OptimizationHints,OptimizationTargetPrediction"),
                 args.stream().filter(arg -> arg.startsWith("--disable-features=")).toList()
         );
     }

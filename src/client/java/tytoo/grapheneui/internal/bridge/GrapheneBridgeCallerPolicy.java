@@ -8,8 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * Decides which documents may call a surface's bridge: only the main frame, and only while it shows a page from an
  * origin that Java itself loaded into the surface. Pages reached by the page's own navigation, popups and frames
- * from other origins get no bridge. On an origin that has bundled pages, the document must also be one Graphene
- * served from the jar, because the rest of that origin is served by whoever runs the host.
+ * from other origins get no bridge.
  */
 public final class GrapheneBridgeCallerPolicy {
     private final Set<String> trustedOrigins = ConcurrentHashMap.newKeySet();
@@ -21,7 +20,7 @@ public final class GrapheneBridgeCallerPolicy {
         }
     }
 
-    public Decision decide(boolean mainFrame, String frameUrl, boolean jarDocumentRequired, boolean jarDocument) {
+    public Decision decide(boolean mainFrame, String frameUrl) {
         if (!mainFrame) {
             return Decision.REFUSED_SUBFRAME;
         }
@@ -31,18 +30,13 @@ public final class GrapheneBridgeCallerPolicy {
             return Decision.REFUSED_ORIGIN;
         }
 
-        if (jarDocumentRequired && !jarDocument) {
-            return Decision.REFUSED_NOT_FROM_JAR;
-        }
-
         return Decision.ALLOWED;
     }
 
     public enum Decision {
         ALLOWED,
         REFUSED_SUBFRAME,
-        REFUSED_ORIGIN,
-        REFUSED_NOT_FROM_JAR;
+        REFUSED_ORIGIN;
 
         public boolean allowed() {
             return this == ALLOWED;

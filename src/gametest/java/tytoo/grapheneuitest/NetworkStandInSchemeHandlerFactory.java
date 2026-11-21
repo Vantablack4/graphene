@@ -17,33 +17,17 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
- * Stands in for the network on the bundled test host: whatever Graphene does not answer from the jar comes here, as
- * it would come from the CDN. It serves a same-origin document that tries the bridge, and records every request.
+ * Stands in for the network on the owned test host: a request Graphene failed to answer would come here. It records
+ * every request, and the test expects none.
  */
 final class NetworkStandInSchemeHandlerFactory implements CefSchemeHandlerFactory {
     static final String HOST = "graphene-bundled.invalid";
-    static final String NETWORK_PAGE_PATH = "/outside/network.html";
-    private static final String NETWORK_PAGE = """
-            <!DOCTYPE html>
-            <html lang="en"><head><meta charset="utf-8"><title>Network page</title></head><body>
-            <script>
-              window.cefQuery({
-                request: JSON.stringify({ bridge: "graphene-ui", version: 1, kind: "event", channel: "test:outside", payload: {} }),
-                onSuccess: function () { location.assign("/page/index.html?step=back&outside=ok"); },
-                onFailure: function (code) { location.assign("/page/index.html?step=back&outside=" + code); }
-              });
-            </script>
-            </body></html>
-            """;
-
     private final List<String> requestedPaths = new CopyOnWriteArrayList<>();
 
     @Override
     public CefResourceHandler create(CefBrowser browser, CefFrame frame, String schemeName, CefRequest request) {
-        String path = URI.create(request.getURL()).getRawPath();
-        requestedPaths.add(path);
-        boolean page = NETWORK_PAGE_PATH.equals(path);
-        return new StaticResponse(page ? "text/html" : "text/plain", page ? NETWORK_PAGE : "from the network");
+        requestedPaths.add(URI.create(request.getURL()).getRawPath());
+        return new StaticResponse("text/html", "<script>cefQuery({})</script>");
     }
 
     List<String> requestedPaths() {

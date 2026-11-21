@@ -28,8 +28,6 @@ final class GrapheneBridgeCallerEndpointTest {
             {"bridge":"graphene-ui","version":1,"kind":"request","id":"js-2","channel":"vb:unknown","payload":null}
             """;
     private static final String REFUSED = "failure 403";
-    private static final String BUNDLED_PAGE = "https://cdn.vantablack4.com/webassets/manuscript/bundled/index.html?mode=editor";
-    private static final String NETWORK_PAGE = "https://cdn.vantablack4.com/webassets/manuscript/game-assets/evil.html";
 
     @Test
     void aSubframeOfThePageCannotCallTheBridge() {
@@ -43,7 +41,7 @@ final class GrapheneBridgeCallerEndpointTest {
 
         for (String message : List.of(SAVE_REQUEST, SAVE_EVENT, READY)) {
             RecordingCallback callback = new RecordingCallback();
-            assertTrue(endpoint.handleQuery(message, callback, false, PAGE, false));
+            assertTrue(endpoint.handleQuery(message, callback, false, PAGE));
             assertEquals(List.of(REFUSED), callback.results, message);
         }
 
@@ -62,11 +60,11 @@ final class GrapheneBridgeCallerEndpointTest {
         });
 
         RecordingCallback subframe = new RecordingCallback();
-        endpoint.handleQuery(SAVE_REQUEST, subframe, false, "https://evil.example/frame.html", false);
+        endpoint.handleQuery(SAVE_REQUEST, subframe, false, "https://evil.example/frame.html");
         RecordingCallback popupInMainFrame = new RecordingCallback();
-        endpoint.handleQuery(SAVE_REQUEST, popupInMainFrame, true, "https://evil.example/popup.html", false);
+        endpoint.handleQuery(SAVE_REQUEST, popupInMainFrame, true, "https://evil.example/popup.html");
         RecordingCallback blankPopup = new RecordingCallback();
-        endpoint.handleQuery(SAVE_REQUEST, blankPopup, true, "about:blank", false);
+        endpoint.handleQuery(SAVE_REQUEST, blankPopup, true, "about:blank");
 
         assertEquals(List.of(REFUSED), subframe.results);
         assertEquals(List.of(REFUSED), popupInMainFrame.results);
@@ -80,54 +78,11 @@ final class GrapheneBridgeCallerEndpointTest {
         GrapheneBridgeEndpoint endpoint = endpoint();
         RecordingCallback callback = new RecordingCallback();
 
-        assertTrue(endpoint.handleQuery(UNKNOWN_CHANNEL_REQUEST, callback, true, PAGE, false));
+        assertTrue(endpoint.handleQuery(UNKNOWN_CHANNEL_REQUEST, callback, true, PAGE));
 
         assertEquals(1, callback.results.size());
         String result = callback.results.getFirst();
         assertTrue(result.startsWith("success ") && result.contains("handler_not_found"), result);
-        endpoint.close();
-    }
-
-    @Test
-    void onABundledOriginANetworkDocumentCannotCallTheBridge() {
-        GrapheneBridgeEndpoint endpoint = new GrapheneBridgeRuntime().createEndpoint();
-        endpoint.trustPage(BUNDLED_PAGE);
-        AtomicInteger handled = new AtomicInteger();
-        endpoint.onEvent(CHANNEL, (ignoredChannel, ignoredPayload) -> handled.incrementAndGet());
-
-        RecordingCallback beforeAnyDocument = new RecordingCallback();
-        endpoint.handleQuery(SAVE_EVENT, beforeAnyDocument, true, BUNDLED_PAGE, true);
-        endpoint.onMainFrameCommit(NETWORK_PAGE);
-        RecordingCallback networkDocument = new RecordingCallback();
-        endpoint.handleQuery(SAVE_EVENT, networkDocument, true, NETWORK_PAGE, true);
-        endpoint.onMainFrameRequest(BUNDLED_PAGE);
-        endpoint.onMainFrameCommit(NETWORK_PAGE);
-        RecordingCallback otherDocumentCommitted = new RecordingCallback();
-        endpoint.handleQuery(SAVE_EVENT, otherDocumentCommitted, true, NETWORK_PAGE, true);
-
-        assertEquals(List.of(REFUSED), beforeAnyDocument.results);
-        assertEquals(List.of(REFUSED), networkDocument.results);
-        assertEquals(List.of(REFUSED), otherDocumentCommitted.results);
-        assertEquals(0, handled.get());
-        endpoint.close();
-    }
-
-    @Test
-    void onABundledOriginTheDocumentServedFromTheJarReachesTheRouterUntilTheNextDocument() {
-        GrapheneBridgeEndpoint endpoint = new GrapheneBridgeRuntime().createEndpoint();
-        endpoint.trustPage(BUNDLED_PAGE);
-
-        endpoint.onMainFrameRequest(BUNDLED_PAGE);
-        endpoint.onMainFrameCommit(BUNDLED_PAGE + "#editor");
-        RecordingCallback jarDocument = new RecordingCallback();
-        endpoint.handleQuery(UNKNOWN_CHANNEL_REQUEST, jarDocument, true, BUNDLED_PAGE + "#editor", true);
-        endpoint.onMainFrameRequest(null);
-        endpoint.onMainFrameCommit(NETWORK_PAGE);
-        RecordingCallback nextDocument = new RecordingCallback();
-        endpoint.handleQuery(UNKNOWN_CHANNEL_REQUEST, nextDocument, true, NETWORK_PAGE, true);
-
-        assertTrue(jarDocument.results.getFirst().contains("handler_not_found"), jarDocument.results.toString());
-        assertEquals(List.of(REFUSED), nextDocument.results);
         endpoint.close();
     }
 

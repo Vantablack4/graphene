@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 
 @SuppressWarnings("unused")
 public final class GrapheneContainerConfig {
@@ -14,10 +15,12 @@ public final class GrapheneContainerConfig {
 
     private final GrapheneHttpConfig httpConfig;
     private final Map<String, String> bundledPages;
+    private final Map<String, GrapheneProxiedAssets> proxiedAssets;
 
     private GrapheneContainerConfig(Builder builder) {
         this.httpConfig = builder.httpConfig;
         this.bundledPages = Map.copyOf(builder.bundledPages);
+        this.proxiedAssets = Map.copyOf(builder.proxiedAssets);
     }
 
     public static GrapheneContainerConfig defaults() {
@@ -39,6 +42,13 @@ public final class GrapheneContainerConfig {
         return bundledPages;
     }
 
+    /**
+     * The read-only proxy mounts, by URL prefix. See {@link Builder#proxiedAssets(String, String, Set)}.
+     */
+    public Map<String, GrapheneProxiedAssets> proxiedAssets() {
+        return proxiedAssets;
+    }
+
     @Override
     public boolean equals(Object object) {
         if (this == object) {
@@ -49,16 +59,19 @@ public final class GrapheneContainerConfig {
             return false;
         }
 
-        return Objects.equals(httpConfig, other.httpConfig) && bundledPages.equals(other.bundledPages);
+        return Objects.equals(httpConfig, other.httpConfig)
+                && bundledPages.equals(other.bundledPages)
+                && proxiedAssets.equals(other.proxiedAssets);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(httpConfig, bundledPages);
+        return Objects.hash(httpConfig, bundledPages, proxiedAssets);
     }
 
     public static final class Builder {
         private final Map<String, String> bundledPages = new LinkedHashMap<>();
+        private final Map<String, GrapheneProxiedAssets> proxiedAssets = new LinkedHashMap<>();
         private GrapheneHttpConfig httpConfig;
 
         private Builder() {
@@ -70,16 +83,31 @@ public final class GrapheneContainerConfig {
         }
 
         /**
-         * Serves every request under {@code urlPrefix} (for example {@code https://cdn.example.com/site/page/}) from
-         * the jar directory {@code resourceDirectory} (for example {@code assets/my_mod/web/page/}) instead of the
-         * network. The page keeps the prefix's origin, so it can read that origin's other files without CORS, while
-         * its HTML, scripts and styles cannot be changed by whoever serves the origin. Paths outside the prefix still
-         * go to the network.
+         * Serves every request under {@code urlPrefix} (for example {@code https://my-mod.graphene.invalid/page/})
+         * from the jar directory {@code resourceDirectory} (for example {@code assets/my_mod/web/page/}). Graphene
+         * then owns the prefix's whole origin: every request on it is answered by a bundled or proxied mount or with
+         * a local error, and none reaches the network. Use a host nobody else serves, ideally under
+         * {@code .invalid}, so a request Graphene misses fails instead of reaching someone's server.
          */
         public Builder bundledPages(String urlPrefix, String resourceDirectory) {
             bundledPages.put(
                     GrapheneBundledPages.validateUrlPrefix(urlPrefix),
                     GrapheneBundledPages.validateResourceDirectory(resourceDirectory)
+            );
+            return this;
+        }
+
+        /**
+         * Fetches requests under {@code urlPrefix} on a Graphene-owned origin from {@code upstreamBase} plus the same
+         * relative path, so a bundled page on that origin reads remote data (JSON, images, fonts) as same-origin
+         * files. Only GET requests for the listed extensions with a plain path (letters, digits, {@code . _ -}, no
+         * dot segments, no query) are fetched; the response type comes from the extension, never from upstream, and
+         * any other request or upstream failure is a local error.
+         */
+        public Builder proxiedAssets(String urlPrefix, String upstreamBase, Set<String> extensions) {
+            proxiedAssets.put(
+                    GrapheneBundledPages.validateUrlPrefix(urlPrefix),
+                    new GrapheneProxiedAssets(upstreamBase, extensions)
             );
             return this;
         }
