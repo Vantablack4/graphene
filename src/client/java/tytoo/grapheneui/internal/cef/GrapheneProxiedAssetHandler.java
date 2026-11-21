@@ -24,7 +24,6 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Flow;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,12 +32,14 @@ import java.util.function.Function;
 /**
  * Answers one proxied-asset request: a GET of a fixed upstream URL. Nothing from the page is forwarded (no cookies,
  * headers or query); the type comes from the extension; the body is capped and must arrive whole within a deadline;
- * at most a few requests are in flight, the rest get a local 503; every continuation runs on Graphene's own small
- * pool, never on CEF's IO thread; any upstream failure is a local error.
+ * at most {@link #MAX_RUNNING} fetches run at once and up to {@link #MAX_QUEUED} more wait their turn (only beyond
+ * that a local 503); every continuation runs on Graphene's own small pool, never on CEF's IO thread; any upstream
+ * failure is a local error.
  */
 final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
     static final int MAX_BODY_BYTES = 16 * 1024 * 1024;
-    static final int MAX_IN_FLIGHT = 32;
+    static final int MAX_RUNNING = 32;
+    static final int MAX_QUEUED = 512;
     static final Duration DEADLINE = Duration.ofSeconds(30);
     static final String NOSNIFF = "nosniff";
     static final String SANDBOX = "sandbox";
@@ -64,14 +65,18 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
             .connectTimeout(Duration.ofSeconds(10))
             .executor(EXECUTOR)
             .build();
-    private static final Semaphore SLOTS = new Semaphore(MAX_IN_FLIGHT);
+    private static final GrapheneProxyQueue QUEUE = new GrapheneProxyQueue(MAX_RUNNING, MAX_QUEUED, EXECUTOR);
 
     private final String upstreamUrl;
     private final String mimeType;
     private final Function<String, CompletableFuture<Fetched>> fetcher;
-    private final Semaphore slots;
+    private final GrapheneProxyQueue queue;
+    private final Runnable begin = this::begin;
     private final Duration deadline;
     private final AtomicBoolean slotHeld = new AtomicBoolean();
+    private final Object lock = new Object();
+    private volatile Runnable onReady = () -> {
+    };
     private volatile int status = STATUS_BAD_GATEWAY;
     private volatile byte[] body = EMPTY;
     private volatile CompletableFuture<Fetched> fetch;
@@ -79,19 +84,19 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
     private int readOffset;
 
     GrapheneProxiedAssetHandler(String upstreamUrl) {
-        this(upstreamUrl, GrapheneProxiedAssetHandler::fetchUpstream, SLOTS, DEADLINE);
+        this(upstreamUrl, GrapheneProxiedAssetHandler::fetchUpstream, QUEUE, DEADLINE);
     }
 
     GrapheneProxiedAssetHandler(
             String upstreamUrl,
             Function<String, CompletableFuture<Fetched>> fetcher,
-            Semaphore slots,
+            GrapheneProxyQueue queue,
             Duration deadline
     ) {
         this.upstreamUrl = Objects.requireNonNull(upstreamUrl, "upstreamUrl");
         this.mimeType = GrapheneMimeTypes.resolve(upstreamUrl);
         this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
-        this.slots = Objects.requireNonNull(slots, "slots");
+        this.queue = Objects.requireNonNull(queue, "queue");
         this.deadline = Objects.requireNonNull(deadline, "deadline");
     }
 
@@ -135,7 +140,11 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
 
     @Override
     public void cancel() {
-        cancelled = true;
+        synchronized (lock) {
+            cancelled = true;
+            queue.remove(begin);
+        }
+
         CompletableFuture<Fetched> pending = fetch;
         if (pending != null) {
             pending.cancel(true);
@@ -146,8 +155,10 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
     }
 
     /**
-     * Starts the fetch and calls {@code onReady} once the status and body are known, on Graphene's own pool (or at
-     * once for a local refusal). Returns {@code true}: the request is always handled here.
+     * Queues the fetch and calls {@code onReady} once the status and body are known, on Graphene's own pool (or at
+     * once for a local refusal: another method, or a full queue). The deadline counts from when the fetch starts, not
+     * from when it was queued: every running fetch ends within it, so the queue always drains. Returns {@code true}:
+     * the request is always handled here.
      */
     boolean start(String method, Runnable onReady) {
         if (!METHOD_GET.equalsIgnoreCase(method)) {
@@ -156,13 +167,33 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
             return true;
         }
 
-        if (!slots.tryAcquire()) {
+        this.onReady = Objects.requireNonNull(onReady, "onReady");
+        if (!queue.submit(begin)) {
             status = STATUS_UNAVAILABLE;
             onReady.run();
-            return true;
         }
 
-        slotHeld.set(true);
+        return true;
+    }
+
+    int status() {
+        return status;
+    }
+
+    byte[] body() {
+        return body;
+    }
+
+    private void begin() {
+        synchronized (lock) {
+            if (cancelled) {
+                queue.release();
+                return;
+            }
+
+            slotHeld.set(true);
+        }
+
         CompletableFuture<Fetched> pending;
         try {
             pending = fetcher.apply(upstreamUrl);
@@ -171,6 +202,10 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
         }
 
         fetch = pending;
+        if (cancelled) {
+            pending.cancel(true);
+        }
+
         pending.orTimeout(deadline.toMillis(), TimeUnit.MILLISECONDS)
                 .handleAsync((fetched, failure) -> {
                     finish(fetched, failure);
@@ -181,15 +216,6 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
                         onReady.run();
                     }
                 }, EXECUTOR);
-        return true;
-    }
-
-    int status() {
-        return status;
-    }
-
-    byte[] body() {
-        return body;
     }
 
     private void finish(Fetched fetched, Throwable failure) {
@@ -217,7 +243,7 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
 
     private void releaseSlot() {
         if (slotHeld.compareAndSet(true, false)) {
-            slots.release();
+            queue.release();
         }
     }
 

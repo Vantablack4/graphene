@@ -142,8 +142,10 @@ GrapheneCore.register(MyMod.class, GrapheneConfig.builder()
 - Every request under a `proxiedAssets` prefix is fetched by Java from the upstream directory plus the same path:
   GET only, the listed extensions only (never HTML, SVG, XML, scripts, styles, WebAssembly or PDF), a plain path
   (letters, digits, `.`, `_`, `-`, no dot segments, no query), nothing forwarded from the page (no cookies, headers or
-  query), no percent escapes, no redirects, at most 16 MiB, and the whole body within 30 seconds. At most 32 proxied
-  requests are in flight; more get a local 503. The response type comes from the extension and carries
+  query), no percent escapes, no redirects, at most 16 MiB, and the whole body within 30 seconds. At most 32 fetches
+  run at once; up to 512 more wait their turn in order (a request CEF cancels leaves the queue), and only beyond that
+  does a request get a local 503. The 30 seconds count from when a fetch starts, so a queued request never times out
+  while it waits; every running fetch ends within its deadline, so the queue always drains. The response type comes from the extension and carries
   `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (a subresource ignores that CSP, so
   fonts, images and JSON still load; a proxied file opened as a document cannot run anything). An upstream 404 is a
   local 404, a missed deadline a local 504, and any other upstream answer or failure a local 502. The fetch and its
