@@ -17,11 +17,16 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Collection;
+import java.util.HexFormat;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -41,6 +46,7 @@ final class GrapheneCefNativeBundleInstaller {
 
     private final Path installDir;
     private final List<String> mirrorUrls;
+    private final GrapheneCefNativeBundleDigests.Pin pin;
     private final IProgressHandler progressHandler;
     private final boolean macOs;
     private final long initialBackoffMillis;
@@ -49,6 +55,7 @@ final class GrapheneCefNativeBundleInstaller {
     GrapheneCefNativeBundleInstaller(
             Path installDir,
             List<String> mirrorUrls,
+            GrapheneCefNativeBundleDigests.Pin pin,
             IProgressHandler progressHandler,
             boolean macOs,
             long initialBackoffMillis,
@@ -56,6 +63,12 @@ final class GrapheneCefNativeBundleInstaller {
     ) {
         this.installDir = Objects.requireNonNull(installDir, "installDir");
         this.mirrorUrls = List.copyOf(Objects.requireNonNull(mirrorUrls, "mirrorUrls"));
+        this.pin = Objects.requireNonNull(pin, "pin");
+        for (String mirrorUrl : this.mirrorUrls) {
+            if (!isHttps(mirrorUrl)) {
+                throw new IllegalArgumentException("CEF native mirrors must use https: " + mirrorUrl);
+            }
+        }
         this.progressHandler = Objects.requireNonNull(progressHandler, "progressHandler");
         this.macOs = macOs;
         this.initialBackoffMillis = initialBackoffMillis;
@@ -73,12 +86,27 @@ final class GrapheneCefNativeBundleInstaller {
     ) throws IOException, UnsupportedPlatformException {
         CefBuildInfo buildInfo = CefBuildInfo.fromClasspath();
         EnumPlatform platform = EnumPlatform.getCurrentPlatform();
+        GrapheneCefNativeBundleDigests.Pin pin = GrapheneCefNativeBundleDigests
+                .find(buildInfo.getReleaseTag(), platform.getIdentifier())
+                .orElseThrow(() -> new IOException("No pinned SHA-256 for the CEF natives " + platform.getIdentifier()
+                        + " " + buildInfo.getReleaseTag() + "; refusing to download unverified native code"));
         List<String> mirrorUrls = mirrorTemplates.stream()
                 .map(template -> resolveMirrorUrl(template, platform.getIdentifier(), buildInfo.getReleaseTag(), jcefMavenVersion))
+                .filter(url -> {
+                    boolean https = isHttps(url);
+                    if (!https) {
+                        LOGGER.warn("Ignoring CEF native mirror {}: only https mirrors are used", url);
+                    }
+                    return https;
+                })
                 .toList();
+        if (mirrorUrls.isEmpty()) {
+            throw new IOException("No https mirror is configured for the CEF natives");
+        }
         return new GrapheneCefNativeBundleInstaller(
                 installDir,
                 mirrorUrls,
+                pin,
                 progressHandler,
                 platform.getOs().isMacOSX(),
                 INITIAL_BACKOFF_MILLIS,
@@ -117,6 +145,9 @@ final class GrapheneCefNativeBundleInstaller {
 
     private void download(Path partialFile) throws IOException, InterruptedException {
         Files.createDirectories(partialFile.getParent());
+        if (existingSize(partialFile) > pin.size()) {
+            Files.delete(partialFile);
+        }
         progressHandler.handleProgress(EnumProgress.DOWNLOADING, EnumProgress.NO_ESTIMATION);
 
         int attemptsWithoutProgress = 0;
@@ -190,7 +221,11 @@ final class GrapheneCefNativeBundleInstaller {
             }
 
             long totalSize = totalSize(connection, offset, resumed);
-            transfer(connection, partialFile, offset, totalSize, resumed);
+            if (totalSize > 0 && totalSize != pin.size()) {
+                LOGGER.warn("CEF native mirror {} serves {} bytes, not the pinned {}; skipping it", mirrorUrl, totalSize, pin.size());
+                return false;
+            }
+            transfer(connection, partialFile, offset, pin.size(), resumed);
             long downloadedSize = existingSize(partialFile);
             if (totalSize > 0 && downloadedSize != totalSize) {
                 throw new IOException("CEF native download ended at " + downloadedSize + " of " + totalSize + " bytes");
@@ -211,6 +246,9 @@ final class GrapheneCefNativeBundleInstaller {
             long written = offset;
             int read;
             while ((read = in.read(buffer)) != -1) {
+                if (written + read > totalSize) {
+                    throw new IOException("CEF native download is larger than the pinned " + totalSize + " bytes");
+                }
                 out.write(buffer, 0, read);
                 written += read;
                 if (totalSize > 0) {
@@ -223,6 +261,8 @@ final class GrapheneCefNativeBundleInstaller {
     private void install(Path partialFile) throws IOException {
         progressHandler.handleProgress(EnumProgress.EXTRACTING, EnumProgress.NO_ESTIMATION);
         try {
+            // Nothing is extracted, unquarantined or loaded before the bytes match the pin.
+            verifyDigest(partialFile, pin);
             verifyArchive(partialFile);
         } catch (IOException exception) {
             Files.deleteIfExists(partialFile);
@@ -248,6 +288,43 @@ final class GrapheneCefNativeBundleInstaller {
         }
         Files.createFile(installDir.resolve(INSTALL_LOCK));
         Files.deleteIfExists(partialFile);
+    }
+
+    static void verifyDigest(Path archiveFile, GrapheneCefNativeBundleDigests.Pin pin) throws IOException {
+        long size = Files.size(archiveFile);
+        if (size != pin.size()) {
+            throw new IOException("CEF natives are " + size + " bytes, not the pinned " + pin.size());
+        }
+
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IOException("SHA-256 is unavailable", exception);
+        }
+        try (InputStream in = Files.newInputStream(archiveFile)) {
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                digest.update(buffer, 0, read);
+            }
+        }
+
+        String actual = HexFormat.of().formatHex(digest.digest());
+        if (!MessageDigest.isEqual(actual.getBytes(StandardCharsets.US_ASCII),
+                pin.sha256().getBytes(StandardCharsets.US_ASCII))) {
+            throw new IOException("CEF natives SHA-256 " + actual + " does not match the pinned " + pin.sha256());
+        }
+    }
+
+    private static boolean isHttps(String url) {
+        try {
+            URI uri = URI.create(url);
+            return uri.getScheme() != null && uri.getScheme().toLowerCase(Locale.ROOT).equals("https") && uri.getHost() != null;
+        } catch (IllegalArgumentException ignored) {
+            // A URL that does not parse is not an https URL.
+            return false;
+        }
     }
 
     private static void verifyArchive(Path archiveFile) throws IOException {
@@ -279,6 +356,10 @@ final class GrapheneCefNativeBundleInstaller {
     private HttpURLConnection open(String url, long offset) throws IOException {
         String currentUrl = url;
         for (int redirect = 0; redirect <= MAX_REDIRECTS; redirect++) {
+            if (!isHttps(currentUrl)) {
+                // Every hop, the first one included: a redirect must never downgrade the download to http.
+                throw new IOException("Refusing a non-https CEF native download URL: " + currentUrl);
+            }
             HttpURLConnection connection = (HttpURLConnection) URI.create(currentUrl).toURL().openConnection();
             connection.setConnectTimeout(CONNECT_TIMEOUT_MILLIS);
             connection.setReadTimeout(readTimeoutMillis);
