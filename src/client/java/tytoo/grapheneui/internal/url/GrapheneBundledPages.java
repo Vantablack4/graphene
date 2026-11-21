@@ -14,9 +14,10 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * The origins Graphene owns entirely. Every request on such an origin is answered by Graphene: from a jar directory
- * (bundled pages), through a read-only proxy to one upstream directory (proxied assets), or with a local error. None
- * ever reaches the network as itself, so only the mods' own content lives on these origins.
+ * The origins Graphene owns entirely, on reserved {@code .invalid} hosts. Every request on such an origin is answered
+ * by Graphene: from a jar directory (bundled pages), through a read-only proxy to one upstream directory (proxied
+ * assets), or with a local error. None ever reaches the network as itself, so only the mods' own content lives on
+ * these origins.
  */
 public final class GrapheneBundledPages {
     private static final GrapheneBundledPages EMPTY = new GrapheneBundledPages(List.of());
@@ -30,6 +31,7 @@ public final class GrapheneBundledPages {
     private static final Set<String> DOCUMENT_EXTENSIONS = Set.of(
             "htm", "html", "xhtml", "xht", "xml", "svg", "svgz", "js", "mjs", "css", "wasm", "pdf"
     );
+    private static final String RESERVED_HOST_SUFFIX = ".invalid";
     private static final Set<String> LOOPBACK_HOSTS = Set.of("127.0.0.1", "localhost", "[::1]");
 
     private final List<Mount> mounts;
@@ -74,16 +76,24 @@ public final class GrapheneBundledPages {
     }
 
     /**
-     * Checks a URL prefix: an absolute http or https URL with a lower-case ASCII host, no query, fragment or user
+     * Checks a URL prefix: an https URL on a reserved host that ends in {@code .invalid} (RFC 6761, never resolvable,
+     * so a request Graphene does not answer fails instead of reaching a server), no port, query, fragment or user
      * info, and a path that ends with a slash.
      */
     public static String validateUrlPrefix(String urlPrefix) {
         String value = Objects.requireNonNull(urlPrefix, "urlPrefix").strip();
         URI uri = parse(value);
+        if (uri != null && uri.getHost() != null && !isReservedHost(uri.getHost())) {
+            throw new IllegalArgumentException(
+                    "A Graphene-owned origin must use a reserved host ending in " + RESERVED_HOST_SUFFIX
+                            + " (for example https://my-mod.graphene.invalid/page/), not a public host: " + urlPrefix
+            );
+        }
+
         if (uri == null
-                || uri.getScheme() == null
-                || !(uri.getScheme().equalsIgnoreCase("https") || uri.getScheme().equalsIgnoreCase("http"))
+                || !"https".equalsIgnoreCase(uri.getScheme())
                 || uri.getHost() == null
+                || uri.getPort() != -1
                 || GrapheneOrigins.of(value) == null
                 || uri.getRawUserInfo() != null
                 || uri.getRawQuery() != null
@@ -91,7 +101,7 @@ public final class GrapheneBundledPages {
                 || uri.getRawPath() == null
                 || !uri.getRawPath().endsWith(PATH_DELIMITER)
                 || hasDotSegment(uri.getRawPath())) {
-            throw new IllegalArgumentException("Bundled page prefix must be an http(s) URL whose path ends with '/': " + urlPrefix);
+            throw new IllegalArgumentException("Bundled page prefix must be an https URL whose path ends with '/': " + urlPrefix);
         }
 
         return value;
@@ -127,6 +137,7 @@ public final class GrapheneBundledPages {
                 && LOOPBACK_HOSTS.contains(uri.getHost().toLowerCase(Locale.ROOT));
         if (uri == null
                 || origin == null
+                || uri.getHost() == null
                 || !(https || loopbackHttp)
                 || uri.getRawUserInfo() != null
                 || uri.getRawQuery() != null
@@ -219,7 +230,8 @@ public final class GrapheneBundledPages {
     }
 
     private static Resolution proxyResolution(GrapheneProxiedAssets proxy, String remainder, URI requestUri) {
-        if (requestUri.getRawQuery() != null || !PROXIED_PATH.matcher(remainder).matches()) {
+        boolean escaped = requestUri.getRawPath() != null && requestUri.getRawPath().indexOf('%') >= 0;
+        if (escaped || requestUri.getRawQuery() != null || !PROXIED_PATH.matcher(remainder).matches()) {
             return Resolution.REFUSED;
         }
 
@@ -230,6 +242,11 @@ public final class GrapheneBundledPages {
         }
 
         return new Resolution(true, null, proxy.upstreamBase() + remainder);
+    }
+
+    private static boolean isReservedHost(String host) {
+        String lowerCaseHost = host.toLowerCase(Locale.ROOT);
+        return lowerCaseHost.endsWith(RESERVED_HOST_SUFFIX) && lowerCaseHost.length() > RESERVED_HOST_SUFFIX.length();
     }
 
     private static Mount mount(String urlPrefix, String resourceDirectory, GrapheneProxiedAssets proxy) {

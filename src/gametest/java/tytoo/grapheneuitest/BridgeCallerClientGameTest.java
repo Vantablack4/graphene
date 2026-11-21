@@ -79,6 +79,11 @@ public final class BridgeCallerClientGameTest implements FabricClientGameTest {
         expect(failures, report.has("exported") && report.get("exported").getAsBoolean(), "a proxied image tainted the canvas");
         expect(failures, report.has("pixel") && report.get("pixel").toString().equals("[255,0,0,255]"), "the proxied image did not draw");
 
+        expect(failures, "loaded".equals(string(report, "fontStatus")), "a proxied font did not load: " + string(report, "fontError"));
+        expect(failures, report.has("fontUsable") && report.get("fontUsable").getAsBoolean(), "a proxied font cannot be used");
+        expect(failures, "font/ttf".equals(string(report, "fontType")), "a proxied font had the wrong type: " + string(report, "fontType"));
+        expect(failures, "sandbox".equals(string(report, "fontCsp")), "a proxied font came without the sandbox CSP");
+
         JsonObject statuses = report.getAsJsonObject("statuses");
         for (String refusedLocally : List.of("disallowedExtension", "query", "encodedBackslash", "refusedBundledPath", "outsideMounts")) {
             expect(failures, statuses.get(refusedLocally).getAsInt() == 404, refusedLocally + " was not refused locally");
@@ -98,7 +103,11 @@ public final class BridgeCallerClientGameTest implements FabricClientGameTest {
                 upstream.stream().noneMatch(request -> request.contains("page.html") || request.contains("a%5C") || request.contains("a\\")),
                 "a refused path reached the upstream: " + upstream
         );
-        expect(failures, upstream.contains("GET catalog.json") && upstream.contains("GET pixel.png"), "the proxy never fetched the catalog and image");
+        expect(
+                failures,
+                upstream.contains("GET catalog.json") && upstream.contains("GET pixel.png") && upstream.contains("GET probe.ttf"),
+                "the proxy never fetched the catalog, image and font"
+        );
         if (!failures.isEmpty()) {
             throw new AssertionError(String.join("; ", failures));
         }

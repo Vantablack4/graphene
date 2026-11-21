@@ -7,6 +7,7 @@ import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.net.InetAddress;
@@ -60,6 +61,7 @@ final class UpstreamAssetServer {
         switch (path) {
             case "catalog.json" -> send(exchange, 200, "text/html", CATALOG_JSON.getBytes(StandardCharsets.UTF_8));
             case "pixel.png" -> send(exchange, 200, "text/html", pixelPng);
+            case "probe.ttf" -> send(exchange, 200, "text/html", probeFont());
             case "page.html" -> send(exchange, 200, "text/html", "<script>cefQuery({})</script>".getBytes(StandardCharsets.UTF_8));
             case "moved.png" -> {
                 exchange.getResponseHeaders().add("Location", "/upstream/pixel.png");
@@ -74,6 +76,16 @@ final class UpstreamAssetServer {
         exchange.sendResponseHeaders(status, body.length == 0 ? -1 : body.length);
         try (OutputStream output = exchange.getResponseBody()) {
             output.write(body);
+        }
+    }
+
+    private static byte[] probeFont() throws IOException {
+        try (InputStream input = UpstreamAssetServer.class.getResourceAsStream("/assets/graphene_gametest/upstream/probe.ttf")) {
+            if (input == null) {
+                throw new IOException("probe.ttf is missing from the gametest resources");
+            }
+
+            return input.readAllBytes();
         }
     }
 

@@ -9,38 +9,53 @@ import org.cef.network.CefResponse;
 import tytoo.grapheneui.internal.logging.GrapheneDebugLogger;
 import tytoo.grapheneui.internal.resource.GrapheneMimeTypes;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.ByteBuffer;
 import java.time.Duration;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Flow;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Function;
 
 /**
- * Answers one proxied-asset request: a GET of a fixed upstream URL on Graphene's own threads, so the CEF IO thread
- * never waits. Nothing from the page is forwarded (no cookies, headers or query); the type comes from the extension,
- * the body is capped, and any upstream failure is a local error.
+ * Answers one proxied-asset request: a GET of a fixed upstream URL. Nothing from the page is forwarded (no cookies,
+ * headers or query); the type comes from the extension; the body is capped and must arrive whole within a deadline;
+ * at most a few requests are in flight, the rest get a local 503; every continuation runs on Graphene's own small
+ * pool, never on CEF's IO thread; any upstream failure is a local error.
  */
 final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
-    static final int MAX_BODY_BYTES = 32 * 1024 * 1024;
+    static final int MAX_BODY_BYTES = 16 * 1024 * 1024;
+    static final int MAX_IN_FLIGHT = 32;
+    static final Duration DEADLINE = Duration.ofSeconds(30);
     static final String NOSNIFF = "nosniff";
     static final String SANDBOX = "sandbox";
+    static final int STATUS_OK = 200;
+    static final int STATUS_NOT_FOUND = 404;
+    static final int STATUS_METHOD_NOT_ALLOWED = 405;
+    static final int STATUS_BAD_GATEWAY = 502;
+    static final int STATUS_UNAVAILABLE = 503;
+    static final int STATUS_GATEWAY_TIMEOUT = 504;
+    static final String THREAD_NAME = "graphene-asset-proxy";
 
     private static final GrapheneDebugLogger DEBUG_LOGGER = GrapheneDebugLogger.of(GrapheneProxiedAssetHandler.class);
     private static final String METHOD_GET = "GET";
     private static final String TEXT_PLAIN = "text/plain";
-    private static final int STATUS_OK = 200;
-    private static final int STATUS_NOT_FOUND = 404;
-    private static final int STATUS_METHOD_NOT_ALLOWED = 405;
-    private static final int STATUS_BAD_GATEWAY = 502;
     private static final byte[] EMPTY = new byte[0];
-    private static final ExecutorService EXECUTOR = Executors.newCachedThreadPool(runnable -> {
-        Thread thread = new Thread(runnable, "graphene-asset-proxy");
+    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(2, runnable -> {
+        Thread thread = new Thread(runnable, THREAD_NAME);
         thread.setDaemon(true);
         return thread;
     });
@@ -49,19 +64,35 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
             .connectTimeout(Duration.ofSeconds(10))
             .executor(EXECUTOR)
             .build();
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(30);
+    private static final Semaphore SLOTS = new Semaphore(MAX_IN_FLIGHT);
 
     private final String upstreamUrl;
     private final String mimeType;
+    private final Function<String, CompletableFuture<Fetched>> fetcher;
+    private final Semaphore slots;
+    private final Duration deadline;
+    private final AtomicBoolean slotHeld = new AtomicBoolean();
     private volatile int status = STATUS_BAD_GATEWAY;
     private volatile byte[] body = EMPTY;
-    private volatile CompletableFuture<Void> fetch;
+    private volatile CompletableFuture<Fetched> fetch;
     private volatile boolean cancelled;
     private int readOffset;
 
     GrapheneProxiedAssetHandler(String upstreamUrl) {
-        this.upstreamUrl = upstreamUrl;
+        this(upstreamUrl, GrapheneProxiedAssetHandler::fetchUpstream, SLOTS, DEADLINE);
+    }
+
+    GrapheneProxiedAssetHandler(
+            String upstreamUrl,
+            Function<String, CompletableFuture<Fetched>> fetcher,
+            Semaphore slots,
+            Duration deadline
+    ) {
+        this.upstreamUrl = Objects.requireNonNull(upstreamUrl, "upstreamUrl");
         this.mimeType = GrapheneMimeTypes.resolve(upstreamUrl);
+        this.fetcher = Objects.requireNonNull(fetcher, "fetcher");
+        this.slots = Objects.requireNonNull(slots, "slots");
+        this.deadline = Objects.requireNonNull(deadline, "deadline");
     }
 
     static int localStatusFor(int upstreamStatus) {
@@ -72,41 +103,9 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
         return upstreamStatus == STATUS_NOT_FOUND ? STATUS_NOT_FOUND : STATUS_BAD_GATEWAY;
     }
 
-    static byte[] readCapped(InputStream input, long declaredLength) throws IOException {
-        if (declaredLength > MAX_BODY_BYTES) {
-            return null;
-        }
-
-        byte[] bytes = input.readNBytes(MAX_BODY_BYTES + 1);
-        return bytes.length > MAX_BODY_BYTES ? null : bytes;
-    }
-
     @Override
     public boolean processRequest(CefRequest request, CefCallback callback) {
-        if (!METHOD_GET.equalsIgnoreCase(request.getMethod())) {
-            status = STATUS_METHOD_NOT_ALLOWED;
-            callback.Continue();
-            return true;
-        }
-
-        HttpRequest upstreamRequest = HttpRequest.newBuilder(URI.create(upstreamUrl))
-                .GET()
-                .timeout(REQUEST_TIMEOUT)
-                .build();
-        fetch = CLIENT.sendAsync(upstreamRequest, HttpResponse.BodyHandlers.ofInputStream())
-                .thenAccept(this::accept)
-                .exceptionally(failure -> {
-                    DEBUG_LOGGER.debug("Proxied asset failed url={} reason={}", upstreamUrl, failure.getMessage());
-                    status = STATUS_BAD_GATEWAY;
-                    body = EMPTY;
-                    return null;
-                })
-                .whenComplete((ignoredResult, ignoredFailure) -> {
-                    if (!cancelled) {
-                        callback.Continue();
-                    }
-                });
-        return true;
+        return start(request.getMethod(), callback::Continue);
     }
 
     @Override
@@ -137,32 +136,181 @@ final class GrapheneProxiedAssetHandler extends CefResourceHandlerAdapter {
     @Override
     public void cancel() {
         cancelled = true;
-        CompletableFuture<Void> pending = fetch;
+        CompletableFuture<Fetched> pending = fetch;
         if (pending != null) {
             pending.cancel(true);
         }
 
         body = EMPTY;
+        releaseSlot();
     }
 
-    private void accept(HttpResponse<InputStream> response) {
-        try (InputStream input = response.body()) {
-            int localStatus = localStatusFor(response.statusCode());
-            if (localStatus != STATUS_OK) {
-                status = localStatus;
+    /**
+     * Starts the fetch and calls {@code onReady} once the status and body are known, on Graphene's own pool (or at
+     * once for a local refusal). Returns {@code true}: the request is always handled here.
+     */
+    boolean start(String method, Runnable onReady) {
+        if (!METHOD_GET.equalsIgnoreCase(method)) {
+            status = STATUS_METHOD_NOT_ALLOWED;
+            onReady.run();
+            return true;
+        }
+
+        if (!slots.tryAcquire()) {
+            status = STATUS_UNAVAILABLE;
+            onReady.run();
+            return true;
+        }
+
+        slotHeld.set(true);
+        CompletableFuture<Fetched> pending;
+        try {
+            pending = fetcher.apply(upstreamUrl);
+        } catch (RuntimeException failure) {
+            pending = CompletableFuture.failedFuture(failure);
+        }
+
+        fetch = pending;
+        pending.orTimeout(deadline.toMillis(), TimeUnit.MILLISECONDS)
+                .handleAsync((fetched, failure) -> {
+                    finish(fetched, failure);
+                    return null;
+                }, EXECUTOR)
+                .whenCompleteAsync((ignoredResult, ignoredFailure) -> {
+                    if (!cancelled) {
+                        onReady.run();
+                    }
+                }, EXECUTOR);
+        return true;
+    }
+
+    int status() {
+        return status;
+    }
+
+    byte[] body() {
+        return body;
+    }
+
+    private void finish(Fetched fetched, Throwable failure) {
+        try {
+            if (failure != null || fetched == null) {
+                Throwable cause = failure != null && failure.getCause() != null ? failure.getCause() : failure;
+                status = cause instanceof TimeoutException ? STATUS_GATEWAY_TIMEOUT : STATUS_BAD_GATEWAY;
+                body = EMPTY;
+                CompletableFuture<Fetched> pending = fetch;
+                if (pending != null) {
+                    pending.cancel(true);
+                }
+                DEBUG_LOGGER.debug("Proxied asset failed url={} status={} reason={}", upstreamUrl, status, cause);
                 return;
             }
 
-            byte[] bytes = readCapped(input, response.headers().firstValueAsLong("content-length").orElse(-1L));
-            if (bytes == null) {
-                status = STATUS_BAD_GATEWAY;
+            int localStatus = localStatusFor(fetched.status());
+            boolean complete = localStatus != STATUS_OK || fetched.body() != null;
+            status = complete ? localStatus : STATUS_BAD_GATEWAY;
+            body = localStatus == STATUS_OK && fetched.body() != null ? fetched.body() : EMPTY;
+        } finally {
+            releaseSlot();
+        }
+    }
+
+    private void releaseSlot() {
+        if (slotHeld.compareAndSet(true, false)) {
+            slots.release();
+        }
+    }
+
+    private static CompletableFuture<Fetched> fetchUpstream(String upstreamUrl) {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(upstreamUrl))
+                .GET()
+                .timeout(DEADLINE)
+                .build();
+        CompletableFuture<HttpResponse<byte[]>> send = CLIENT.sendAsync(request, GrapheneProxiedAssetHandler::cappedBody);
+        CompletableFuture<Fetched> fetched = send.thenApplyAsync(
+                response -> new Fetched(response.statusCode(), response.body()),
+                EXECUTOR
+        );
+        // A deadline, a cancel from CEF or any failure ends the exchange too, so no stream stays open.
+        fetched.whenComplete((ignoredResult, failure) -> {
+            if (failure != null) {
+                send.cancel(true);
+            }
+        });
+        return fetched;
+    }
+
+    /**
+     * Reads a 200 body up to {@link #MAX_BODY_BYTES} (a larger one gives {@code null}); any other status is
+     * discarded unread.
+     */
+    static HttpResponse.BodySubscriber<byte[]> cappedBody(HttpResponse.ResponseInfo responseInfo) {
+        if (responseInfo.statusCode() != STATUS_OK) {
+            return HttpResponse.BodySubscribers.replacing(null);
+        }
+
+        long declaredLength = responseInfo.headers().firstValueAsLong("content-length").orElse(-1L);
+        if (declaredLength > MAX_BODY_BYTES) {
+            return HttpResponse.BodySubscribers.replacing(null);
+        }
+
+        return new CappedBodySubscriber(MAX_BODY_BYTES);
+    }
+
+    record Fetched(int status, byte[] body) {
+    }
+
+    /**
+     * Collects a body without blocking, and gives {@code null} as soon as it grows past its cap.
+     */
+    static final class CappedBodySubscriber implements HttpResponse.BodySubscriber<byte[]> {
+        private final int maxBytes;
+        private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        private final CompletableFuture<byte[]> result = new CompletableFuture<>();
+        private Flow.Subscription subscription;
+
+        CappedBodySubscriber(int maxBytes) {
+            this.maxBytes = maxBytes;
+        }
+
+        @Override
+        public CompletionStage<byte[]> getBody() {
+            return result;
+        }
+
+        @Override
+        public void onSubscribe(Flow.Subscription subscription) {
+            this.subscription = subscription;
+            subscription.request(Long.MAX_VALUE);
+        }
+
+        @Override
+        public void onNext(List<ByteBuffer> buffers) {
+            if (result.isDone()) {
                 return;
             }
 
-            body = bytes;
-            status = STATUS_OK;
-        } catch (IOException exception) {
-            throw new UncheckedIOException(exception);
+            for (ByteBuffer buffer : buffers) {
+                if (bytes.size() + buffer.remaining() > maxBytes) {
+                    result.complete(null);
+                    subscription.cancel();
+                    return;
+                }
+
+                byte[] chunk = new byte[buffer.remaining()];
+                buffer.get(chunk);
+                bytes.write(chunk, 0, chunk.length);
+            }
+        }
+
+        @Override
+        public void onError(Throwable throwable) {
+            result.completeExceptionally(throwable instanceof IOException ? throwable : new IOException(throwable));
+        }
+
+        @Override
+        public void onComplete() {
+            result.complete(bytes.toByteArray());
         }
     }
 }

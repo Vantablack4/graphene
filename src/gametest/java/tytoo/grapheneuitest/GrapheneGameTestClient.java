@@ -20,7 +20,7 @@ public final class GrapheneGameTestClient implements ClientModInitializer {
                 GrapheneConfig.builder()
                         .container(GrapheneContainerConfig.builder()
                                 .bundledPages(BUNDLED_PAGE_PREFIX, "assets/graphene_gametest/web/bundled/")
-                                .proxiedAssets(PROXY_PREFIX, UPSTREAM.baseUrl(), Set.of("json", "png"))
+                                .proxiedAssets(PROXY_PREFIX, UPSTREAM.baseUrl(), Set.of("json", "png", "ttf"))
                                 .build())
                         .build()
         );

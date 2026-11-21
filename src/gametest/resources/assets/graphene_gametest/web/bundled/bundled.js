@@ -47,6 +47,19 @@
             report.imageError = String(error);
         }
 
+        try {
+            const fontResponse = await fetch("../cdn/probe.ttf", { cache: "no-store" });
+            report.fontType = fontResponse.headers.get("content-type");
+            report.fontCsp = fontResponse.headers.get("content-security-policy");
+            const font = new FontFace("GrapheneProbe", "url(../cdn/probe.ttf)");
+            await font.load();
+            document.fonts.add(font);
+            report.fontStatus = font.status;
+            report.fontUsable = document.fonts.check("16px GrapheneProbe", "A");
+        } catch (error) {
+            report.fontError = String(error);
+        }
+
         report.statuses = {
             disallowedExtension: await status("../cdn/page.html"),
             query: await status("../cdn/catalog.json?v=1"),

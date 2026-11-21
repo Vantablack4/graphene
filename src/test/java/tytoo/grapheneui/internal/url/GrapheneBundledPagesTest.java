@@ -119,24 +119,24 @@ final class GrapheneBundledPagesTest {
     @Test
     void theLongestPrefixWins() {
         GrapheneBundledPages pages = GrapheneBundledPages.of(Map.of(
-                "https://cdn.example/site/", "assets/a/site/",
-                "https://cdn.example/site/editor/", "assets/b/editor/"
+                "https://site.example.invalid/site/", "assets/a/site/",
+                "https://site.example.invalid/site/editor/", "assets/b/editor/"
         ));
 
-        assertEquals("assets/b/editor/index.html", path(pages, "https://cdn.example/site/editor/index.html"));
-        assertEquals("assets/a/site/other.html", path(pages, "https://cdn.example/site/other.html"));
+        assertEquals("assets/b/editor/index.html", path(pages, "https://site.example.invalid/site/editor/index.html"));
+        assertEquals("assets/a/site/other.html", path(pages, "https://site.example.invalid/site/other.html"));
     }
 
     @Test
     void prefixesDirectoriesUpstreamsAndExtensionsAreValidated() {
         for (String prefix : new String[]{
-                "https://cdn.example/site",
-                "ftp://cdn.example/site/",
+                "https://site.example.invalid/site",
+                "ftp://site.example.invalid/site/",
                 "https:///site/",
-                "https://user@cdn.example/site/",
-                "https://cdn.example/site/?x=1",
-                "https://cdn.example/site/../",
-                "https://fa\u00df.example/site/",
+                "https://user@site.example.invalid/site/",
+                "https://site.example.invalid/site/?x=1",
+                "https://site.example.invalid/site/../",
+                "https://fa\u00df.invalid/site/",
                 "not a url/"
         }) {
             assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateUrlPrefix(prefix), prefix);
@@ -147,6 +147,7 @@ final class GrapheneBundledPagesTest {
         }
 
         for (String upstream : new String[]{
+                "https://cdn_assets.vantablack4.com/webassets/manuscript/",
                 "http://cdn.vantablack4.com/webassets/manuscript/",
                 "https://cdn.vantablack4.com/webassets/manuscript",
                 "https://user@cdn.vantablack4.com/x/",
@@ -161,6 +162,52 @@ final class GrapheneBundledPagesTest {
             assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateExtensions(Set.of(extension)), extension);
         }
         assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateExtensions(Set.of()));
+    }
+
+    @Test
+    void anOwnedOriginMustBeAReservedHttpsHost() {
+        for (String publicPrefix : new String[]{
+                "https://cdn.vantablack4.com/webassets/manuscript/bundled/",
+                "https://cdn.example/site/",
+                "https://graphene.invalid.example.com/page/",
+                "https://127.0.0.1/page/",
+                "https://localhost/page/"
+        }) {
+            IllegalArgumentException refused = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> GrapheneBundledPages.validateUrlPrefix(publicPrefix),
+                    publicPrefix
+            );
+            assertTrue(refused.getMessage().contains(".invalid"), refused.getMessage());
+            assertThrows(IllegalArgumentException.class, () -> GrapheneContainerConfig.builder().bundledPages(publicPrefix, DIRECTORY));
+            assertThrows(IllegalArgumentException.class, () -> GrapheneContainerConfig.builder().proxiedAssets(publicPrefix, UPSTREAM, Set.of("json")));
+        }
+
+        for (String notReserved : new String[]{
+                "http://manuscript.graphene.invalid/editor/",
+                "https://manuscript.graphene.invalid:8443/editor/",
+                "https://.invalid/editor/",
+                "https://invalid/editor/"
+        }) {
+            assertThrows(IllegalArgumentException.class, () -> GrapheneBundledPages.validateUrlPrefix(notReserved), notReserved);
+        }
+
+        assertEquals(PREFIX, GrapheneBundledPages.validateUrlPrefix(PREFIX));
+        assertEquals("https://Manuscript.Graphene.INVALID/x/", GrapheneBundledPages.validateUrlPrefix("https://Manuscript.Graphene.INVALID/x/"));
+    }
+
+    @Test
+    void proxiedPathsWithAnyPercentEscapeAreRefused() {
+        for (String url : new String[]{
+                PROXY_PREFIX + "game-assets/%6danifest.json",
+                PROXY_PREFIX + "game-assets%2Fmanifest.json",
+                PROXY_PREFIX + "game-assets/manifest%2Ejson",
+                PROXY_PREFIX + "game-assets/manifest.js%6Fn",
+                PROXY_PREFIX + "%67ame-assets/manifest.json"
+        }) {
+            assertTrue(PAGES.resolve(url).refused(), url + " -> " + PAGES.resolve(url));
+        }
+        assertEquals(UPSTREAM + "game-assets/manifest.json", upstream(PROXY_PREFIX + "game-assets/manifest.json"));
     }
 
     @Test

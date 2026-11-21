@@ -86,8 +86,8 @@ public final class GrapheneContainerConfig {
          * Serves every request under {@code urlPrefix} (for example {@code https://my-mod.graphene.invalid/page/})
          * from the jar directory {@code resourceDirectory} (for example {@code assets/my_mod/web/page/}). Graphene
          * then owns the prefix's whole origin: every request on it is answered by a bundled or proxied mount or with
-         * a local error, and none reaches the network. Use a host nobody else serves, ideally under
-         * {@code .invalid}, so a request Graphene misses fails instead of reaching someone's server.
+         * a local error, and none reaches the network. The prefix must be https on a reserved host ending in
+         * {@code .invalid} (RFC 6761), with no port; any other host is refused.
          */
         public Builder bundledPages(String urlPrefix, String resourceDirectory) {
             bundledPages.put(
@@ -101,8 +101,9 @@ public final class GrapheneContainerConfig {
          * Fetches requests under {@code urlPrefix} on a Graphene-owned origin from {@code upstreamBase} plus the same
          * relative path, so a bundled page on that origin reads remote data (JSON, images, fonts) as same-origin
          * files. Only GET requests for the listed extensions with a plain path (letters, digits, {@code . _ -}, no
-         * dot segments, no query) are fetched; the response type comes from the extension, never from upstream, and
-         * any other request or upstream failure is a local error.
+         * dot segments, no percent escapes, no query) are fetched; the response type comes from the extension, never
+         * from upstream, and any other request or upstream failure is a local error. The prefix follows the same
+         * {@code .invalid} rule as {@link #bundledPages(String, String)}.
          */
         public Builder proxiedAssets(String urlPrefix, String upstreamBase, Set<String> extensions) {
             proxiedAssets.put(

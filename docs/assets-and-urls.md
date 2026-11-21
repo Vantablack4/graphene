@@ -142,12 +142,17 @@ GrapheneCore.register(MyMod.class, GrapheneConfig.builder()
 - Every request under a `proxiedAssets` prefix is fetched by Java from the upstream directory plus the same path:
   GET only, the listed extensions only (never HTML, SVG, XML, scripts, styles, WebAssembly or PDF), a plain path
   (letters, digits, `.`, `_`, `-`, no dot segments, no query), nothing forwarded from the page (no cookies, headers or
-  query), no redirects, at most 32 MiB. The response type comes from the extension and carries
-  `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox`. An upstream 404 is a local 404; any other
-  upstream answer or failure is a local 502. The fetch runs on Graphene's own threads, not CEF's IO thread.
+  query), no percent escapes, no redirects, at most 16 MiB, and the whole body within 30 seconds. At most 32 proxied
+  requests are in flight; more get a local 503. The response type comes from the extension and carries
+  `X-Content-Type-Options: nosniff` and `Content-Security-Policy: sandbox` (a subresource ignores that CSP, so
+  fonts, images and JSON still load; a proxied file opened as a document cannot run anything). An upstream 404 is a
+  local 404, a missed deadline a local 504, and any other upstream answer or failure a local 502. The fetch and its
+  continuations run on Graphene's own small thread pool, never on CEF's IO thread.
 - Every other request on the origin, and any path that tries to leave a mount, is answered with a local error and
-  never reaches the network. Use a host nobody else serves, ideally under `.invalid`, so a request that Graphene
-  missed fails instead of reaching someone's server.
+  never reaches the network.
+- The origin must be `https` on a host ending in `.invalid` (RFC 6761 reserves it; it never resolves), with no port.
+  Registration refuses any other host. So a request Graphene never sees (one with no browser, a WebSocket, a
+  service worker, which a reserved host can never have registered) fails on DNS instead of reaching a server.
 
 Because only the mods' own content lives on the origin, the bridge trusts it like any other page origin (see
 [Who May Call The Bridge](bridge.md#who-may-call-the-bridge)). Register before Graphene starts, like the HTTP mode.
