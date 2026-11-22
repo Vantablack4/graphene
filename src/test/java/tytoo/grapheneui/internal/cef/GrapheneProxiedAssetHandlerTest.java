@@ -3,39 +3,30 @@ package tytoo.grapheneui.internal.cef;
 import org.cef.misc.IntRef;
 import org.junit.jupiter.api.Test;
 
-import java.net.http.HttpClient;
-import java.net.http.HttpHeaders;
-import java.net.http.HttpResponse;
-import java.nio.ByteBuffer;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Flow;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
-import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class GrapheneProxiedAssetHandlerTest {
     private static final String URL = "https://cdn.vantablack4.com/webassets/manuscript/game-assets/manifest.json";
     private static final Duration LONG = Duration.ofMinutes(1);
-    private static final ExecutorService POOL = Executors.newCachedThreadPool(runnable -> {
-        Thread thread = new Thread(runnable, GrapheneProxiedAssetHandler.THREAD_NAME + "-test");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final ScheduledExecutorService TIMER = GrapheneProxiedAssetHandler.timer();
 
     @Test
     void onlyAnUpstreamOkIsPassedOnEverythingElseIsALocalError() {
@@ -47,249 +38,219 @@ final class GrapheneProxiedAssetHandlerTest {
     }
 
     @Test
-    void theFetchStartsAndContinuesOnGraphenesOwnPoolNeverOnTheCallersThread() throws Exception {
-        byte[] body = {1, 2, 3};
-        AtomicReference<String> fetchThread = new AtomicReference<>();
+    void aBodyIsFetchedOnAWorkerAndAnsweredFromIt() throws Exception {
+        Fixture fixture = new Fixture(1, 4, 1024);
+        AtomicReference<String> openThread = new AtomicReference<>();
         Probe probe = new Probe();
-        GrapheneProxiedAssetHandler handler = handler(url -> {
-            fetchThread.set(Thread.currentThread().getName());
-            return CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(200, body));
-        }, queue(1, 1), LONG);
+        GrapheneProxiedAssetHandler handler = fixture.handler((url, deadline) -> {
+            openThread.set(Thread.currentThread().getName());
+            return new GrapheneProxiedAssetHandler.Upstream(200, 3, new ByteArrayInputStream(new byte[]{1, 2, 3}));
+        });
 
-        handler.start("GET", probe);
+        assertTrue(handler.start("GET", probe));
 
         probe.await();
         assertEquals(200, handler.status());
-        assertArrayEquals(body, handler.body());
-        assertTrue(fetchThread.get().startsWith(GrapheneProxiedAssetHandler.THREAD_NAME), fetchThread.get());
-        assertTrue(probe.thread.get().startsWith(GrapheneProxiedAssetHandler.THREAD_NAME), probe.thread.get());
+        assertTrue(openThread.get().startsWith(GrapheneProxiedAssetHandler.WORKER_THREAD_NAME), openThread.get());
+        assertTrue(probe.thread.get().startsWith(GrapheneProxiedAssetHandler.WORKER_THREAD_NAME), probe.thread.get());
+        assertEquals(3, fixture.budget.usedBytes());
+        assertArrayEquals(new byte[]{1, 2, 3}, drain(handler));
+        assertEquals(0, fixture.budget.usedBytes());
     }
 
     @Test
-    void aBodyThatDoesNotArriveBeforeTheDeadlineIsALocalTimeoutAndFreesItsSlot() throws Exception {
-        GrapheneProxyQueue queue = queue(1, 1);
-        CompletableFuture<GrapheneProxiedAssetHandler.Fetched> never = new CompletableFuture<>();
-        Probe probe = new Probe();
-        GrapheneProxiedAssetHandler handler = handler(url -> never, queue, Duration.ofMillis(100));
+    void localRefusalsAreAnsweredFromTheTimerNeverFromTheCallingThread() throws Exception {
+        Fixture fixture = new Fixture(1, 1, 1024);
+        Probe posted = new Probe();
+        fixture.handler((url, deadline) -> {
+            throw new AssertionError("a POST reached upstream");
+        }).start("POST", posted);
+        posted.await();
+        assertTrue(posted.thread.get().startsWith(GrapheneProxiedAssetHandler.TIMER_THREAD_NAME), posted.thread.get());
 
-        handler.start("GET", probe);
-
-        probe.await();
-        assertEquals(504, handler.status());
-        assertEquals(0, handler.body().length);
-        assertTrue(never.isDone(), "the upstream future was not ended at the deadline");
-        awaitIdle(queue);
+        BlockingStream holding = new BlockingStream();
+        fixture.handler((url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, 10, holding)).start("GET", new Probe());
+        eventually(() -> holding.reading.getCount() == 0);
+        fixture.handler((url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, 1, new ByteArrayInputStream(new byte[]{1})))
+                .start("GET", new Probe());
+        Probe refused = new Probe();
+        GrapheneProxiedAssetHandler full = fixture.handler((url, deadline) -> {
+            throw new AssertionError("a request beyond the queue was fetched");
+        });
+        full.start("GET", refused);
+        refused.await();
+        assertEquals(503, full.status());
+        assertTrue(refused.thread.get().startsWith(GrapheneProxiedAssetHandler.TIMER_THREAD_NAME), refused.thread.get());
+        holding.close();
     }
 
     @Test
-    void aSlotIsHeldUntilCefHasReadTheBody() throws Exception {
-        GrapheneProxyQueue queue = queue(1, 4);
-        AtomicInteger fetches = new AtomicInteger();
-        GrapheneProxiedAssetHandler first = handler(url -> {
-            fetches.incrementAndGet();
-            return CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{1, 2, 3, 4, 5}));
-        }, queue, LONG);
-        Probe firstProbe = new Probe();
-        first.start("GET", firstProbe);
-        firstProbe.await();
-
-        GrapheneProxiedAssetHandler second = handler(url -> {
-            fetches.incrementAndGet();
-            return CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{6}));
-        }, queue, LONG);
-        Probe secondProbe = new Probe();
-        second.start("GET", secondProbe);
-        Thread.sleep(100);
-        assertEquals(1, fetches.get(), "the next fetch started while the first body was still buffered");
-        assertEquals(1, queue.running());
-
-        assertArrayEquals(new byte[]{1, 2, 3, 4, 5}, drain(first));
-        secondProbe.await();
-        assertEquals(2, fetches.get());
-        assertEquals(0, first.body().length, "the delivered body stayed reachable");
-        drain(second);
-        awaitIdle(queue);
-    }
-
-    @Test
-    void requestsBeyondTheRunningLimitWaitAndOnlyAFullQueueGets503() throws Exception {
-        GrapheneProxyQueue queue = queue(1, 1);
-        AtomicInteger fetches = new AtomicInteger();
-        CompletableFuture<GrapheneProxiedAssetHandler.Fetched> firstFetch = new CompletableFuture<>();
-        GrapheneProxiedAssetHandler first = handler(url -> {
-            fetches.incrementAndGet();
-            return firstFetch;
-        }, queue, LONG);
-        Probe firstProbe = new Probe();
-        first.start("GET", firstProbe);
-        eventually(() -> fetches.get() == 1);
-
-        GrapheneProxiedAssetHandler second = handler(url -> {
-            fetches.incrementAndGet();
-            return CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{2}));
-        }, queue, LONG);
-        Probe secondProbe = new Probe();
-        second.start("GET", secondProbe);
-        assertEquals(1, queue.waiting());
-
-        GrapheneProxiedAssetHandler third = handler(url -> new CompletableFuture<>(), queue, LONG);
-        Probe thirdProbe = new Probe();
-        third.start("GET", thirdProbe);
-        thirdProbe.await();
-        assertEquals(503, third.status());
-
-        firstFetch.complete(new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{1}));
-        firstProbe.await();
-        drain(first);
-        secondProbe.await();
-        assertEquals(200, second.status());
-        assertArrayEquals(new byte[]{2}, drain(second));
-        assertEquals(2, fetches.get());
-        awaitIdle(queue);
-    }
-
-    @Test
-    void aQueuedRequestCancelledByCefLeavesTheQueueAndNeverFetches() throws Exception {
-        GrapheneProxyQueue queue = queue(1, 1);
-        CompletableFuture<GrapheneProxiedAssetHandler.Fetched> firstFetch = new CompletableFuture<>();
-        GrapheneProxiedAssetHandler first = handler(url -> firstFetch, queue, LONG);
-        Probe firstProbe = new Probe();
-        first.start("GET", firstProbe);
-
-        AtomicInteger cancelledFetches = new AtomicInteger();
-        GrapheneProxiedAssetHandler cancelled = handler(url -> {
-            cancelledFetches.incrementAndGet();
-            return new CompletableFuture<>();
-        }, queue, LONG);
-        Probe cancelledProbe = new Probe();
-        cancelled.start("GET", cancelledProbe);
-        cancelled.cancel();
-        eventually(() -> queue.waiting() == 0);
-
-        GrapheneProxiedAssetHandler next = handler(
-                url -> CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{3})),
-                queue,
-                LONG
-        );
-        Probe nextProbe = new Probe();
-        next.start("GET", nextProbe);
-        assertEquals(1, queue.waiting(), "the cancelled request still held its place in the queue");
-
-        firstFetch.complete(new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{1}));
-        firstProbe.await();
-        drain(first);
-        nextProbe.await();
-        assertEquals(200, next.status());
-        drain(next);
-        assertEquals(0, cancelledFetches.get());
-        assertEquals(0, cancelledProbe.calls.get());
-        awaitIdle(queue);
-    }
-
-    @Test
-    void aCefCancelOfARunningFetchEndsItOnGraphenesPoolAndHandsTheSlotOn() throws Exception {
-        GrapheneProxyQueue queue = queue(1, 4);
-        CompletableFuture<GrapheneProxiedAssetHandler.Fetched> never = new CompletableFuture<>();
-        AtomicReference<String> cancelThread = new AtomicReference<>();
-        never.whenComplete((ignoredResult, ignoredFailure) -> cancelThread.set(Thread.currentThread().getName()));
-        AtomicInteger fetches = new AtomicInteger();
-        GrapheneProxiedAssetHandler first = handler(url -> {
-            fetches.incrementAndGet();
-            return never;
-        }, queue, LONG);
-        Probe firstProbe = new Probe();
-        first.start("GET", firstProbe);
-        eventually(() -> fetches.get() == 1);
-        GrapheneProxiedAssetHandler waiting = handler(
-                url -> CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{4})),
-                queue,
-                LONG
-        );
-        Probe waitingProbe = new Probe();
-        waiting.start("GET", waitingProbe);
-
-        first.cancel();
-
-        waitingProbe.await();
-        assertTrue(never.isCancelled(), "a CEF cancel did not end the upstream fetch");
-        assertTrue(cancelThread.get().startsWith(GrapheneProxiedAssetHandler.THREAD_NAME), cancelThread.get());
-        assertEquals(200, waiting.status());
-        drain(waiting);
-        Thread.sleep(50);
-        assertEquals(0, firstProbe.calls.get(), "a cancelled request was continued");
-        awaitIdle(queue);
-    }
-
-    @Test
-    void aCancelDuringStartupIsHonouredOnceTheExchangeExistsAndKeepsTheSlotUntilThen() throws Exception {
-        GrapheneProxyQueue queue = queue(1, 4);
-        CountDownLatch insideFetch = new CountDownLatch(1);
-        CountDownLatch letFetchReturn = new CountDownLatch(1);
-        CompletableFuture<GrapheneProxiedAssetHandler.Fetched> exchange = new CompletableFuture<>();
+    void aTimedOutFetchClosesItsStreamBeforeItsWorkerTakesTheNextRequest() throws Exception {
+        Fixture fixture = new Fixture(1, 4, 1024, Duration.ofMillis(150), LONG);
         List<String> order = new ArrayList<>();
-        exchange.whenComplete((ignoredResult, ignoredFailure) -> record(order, "first exchange ended"));
-        GrapheneProxiedAssetHandler first = handler(url -> {
-            insideFetch.countDown();
-            await(letFetchReturn);
-            return exchange;
-        }, queue, LONG);
-        Probe firstProbe = new Probe();
-        first.start("GET", firstProbe);
-        assertTrue(insideFetch.await(5, TimeUnit.SECONDS));
-
-        GrapheneProxiedAssetHandler second = handler(url -> {
+        BlockingStream stalled = new BlockingStream(() -> record(order, "first stream closed"));
+        Probe first = new Probe();
+        GrapheneProxiedAssetHandler timedOut = fixture.handler((url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, 100, stalled));
+        timedOut.start("GET", first);
+        Probe second = new Probe();
+        fixture.handler((url, deadline) -> {
             record(order, "second fetch started");
-            return CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{5}));
-        }, queue, LONG);
-        Probe secondProbe = new Probe();
-        second.start("GET", secondProbe);
+            return new GrapheneProxiedAssetHandler.Upstream(200, 1, new ByteArrayInputStream(new byte[]{1}));
+        }).start("GET", second);
 
-        first.cancel();
-        Thread.sleep(100);
-        assertEquals(1, queue.running(), "the slot was handed on while the first exchange was still starting");
-        assertEquals(1, queue.waiting());
-
-        letFetchReturn.countDown();
-        secondProbe.await();
-        assertTrue(exchange.isCancelled(), "the exchange published after the cancel was left running");
-        assertEquals(List.of("first exchange ended", "second fetch started"), snapshot(order));
-        drain(second);
-        assertEquals(0, firstProbe.calls.get());
-        awaitIdle(queue);
+        first.await();
+        second.await();
+        assertEquals(504, timedOut.status());
+        assertEquals(List.of("first stream closed", "second fetch started"), snapshot(order));
+        assertFalse(timedOut.holdsBody());
     }
 
     @Test
-    void theDeadlineCountsFromWhenTheFetchStartsNotFromWhenItWasQueued() throws Exception {
-        GrapheneProxyQueue queue = queue(1, 4);
-        Duration deadline = Duration.ofMillis(400);
-        GrapheneProxiedAssetHandler first = handler(url -> later(300, 1), queue, deadline);
-        Probe firstProbe = new Probe(first);
-        first.start("GET", firstProbe);
-        GrapheneProxiedAssetHandler queued = handler(url -> later(300, 2), queue, deadline);
-        Probe queuedProbe = new Probe(queued);
-        long queuedAt = System.nanoTime();
-        queued.start("GET", queuedProbe);
+    void theBodyIsDroppedAsSoonAsCefCopiesItsLastByte() throws Exception {
+        Fixture fixture = new Fixture(1, 1, 1024);
+        Probe probe = new Probe();
+        GrapheneProxiedAssetHandler handler = fixture.handler(
+                (url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, 4, new ByteArrayInputStream(new byte[]{1, 2, 3, 4}))
+        );
+        handler.start("GET", probe);
+        probe.await();
 
-        queuedProbe.await();
-        long waitedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - queuedAt);
-        assertEquals(200, first.status());
-        assertEquals(200, queued.status(), "a queued request timed out while it was waiting");
-        assertTrue(waitedMillis > deadline.toMillis(), "the test did not wait past one deadline: " + waitedMillis);
-        awaitIdle(queue);
+        byte[] buffer = new byte[4];
+        IntRef read = new IntRef();
+        assertTrue(handler.readResponse(buffer, 4, read, null));
+        assertEquals(4, read.get());
+        assertFalse(handler.holdsBody(), "the body stayed after its last byte was copied");
+        assertEquals(0, fixture.budget.usedBytes());
+        assertFalse(handler.readResponse(buffer, 4, read, null));
+    }
+
+    @Test
+    void aBodyCefStopsReadingIsDroppedAtTheDeliveryDeadline() throws Exception {
+        Fixture fixture = new Fixture(1, 1, 1024, LONG, Duration.ofMillis(150));
+        Probe probe = new Probe();
+        GrapheneProxiedAssetHandler handler = fixture.handler(
+                (url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, 4, new ByteArrayInputStream(new byte[]{1, 2, 3, 4}))
+        );
+        handler.start("GET", probe);
+        probe.await();
+        byte[] buffer = new byte[1];
+        handler.readResponse(buffer, 1, new IntRef(), null);
+        assertTrue(handler.holdsBody());
+
+        eventually(() -> !handler.holdsBody());
+        assertEquals(0, fixture.budget.usedBytes());
+        assertFalse(handler.readResponse(buffer, 1, new IntRef(), null));
+    }
+
+    @Test
+    void aCancelWhileQueuedNeverFetchesAndACancelWhileReadingClosesTheStream() throws Exception {
+        Fixture fixture = new Fixture(1, 4, 1024);
+        BlockingStream reading = new BlockingStream();
+        Probe readingProbe = new Probe();
+        GrapheneProxiedAssetHandler running = fixture.handler((url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, 100, reading));
+        running.start("GET", readingProbe);
+        eventually(() -> reading.reading.getCount() == 0);
+
+        AtomicInteger queuedOpens = new AtomicInteger();
+        Probe queuedProbe = new Probe();
+        GrapheneProxiedAssetHandler queued = fixture.handler((url, deadline) -> {
+            queuedOpens.incrementAndGet();
+            return new GrapheneProxiedAssetHandler.Upstream(200, 1, new ByteArrayInputStream(new byte[]{1}));
+        });
+        queued.start("GET", queuedProbe);
+        queued.cancel();
+        assertEquals(0, fixture.pool.getQueue().size(), "the cancelled request kept its place in the queue");
+
+        running.cancel();
+        eventually(() -> reading.closed && fixture.pool.getActiveCount() == 0);
+        Thread.sleep(50);
+        assertEquals(0, queuedOpens.get());
+        assertEquals(0, readingProbe.calls.get());
+        assertEquals(0, queuedProbe.calls.get());
+        assertEquals(0, fixture.budget.usedBytes());
+    }
+
+    @Test
+    void sizesAreCheckedAtTheHeadersAndBodiesAreBudgeted() throws Exception {
+        Fixture fixture = new Fixture(1, 4, 10);
+        CountingStream declaredTooLarge = new CountingStream(new byte[0]);
+        Probe tooLarge = new Probe();
+        GrapheneProxiedAssetHandler large = fixture.handler(
+                (url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, GrapheneProxiedAssetHandler.MAX_BODY_BYTES + 1L, declaredTooLarge)
+        );
+        large.start("GET", tooLarge);
+        tooLarge.await();
+        assertEquals(502, large.status());
+        assertEquals(0, declaredTooLarge.reads.get(), "a body declared too large was read");
+        assertTrue(declaredTooLarge.closed);
+
+        CountingStream notOk = new CountingStream(new byte[]{1, 2});
+        Probe missingProbe = new Probe();
+        GrapheneProxiedAssetHandler missing = fixture.handler((url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(404, 2, notOk));
+        missing.start("GET", missingProbe);
+        missingProbe.await();
+        assertEquals(404, missing.status());
+        assertEquals(0, notOk.reads.get());
+        assertTrue(notOk.closed);
+
+        Probe overBudget = new Probe();
+        GrapheneProxiedAssetHandler budgeted = fixture.handler(
+                (url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, 11, new ByteArrayInputStream(new byte[11]))
+        );
+        budgeted.start("GET", overBudget);
+        overBudget.await();
+        assertEquals(503, budgeted.status());
+
+        Probe shortProbe = new Probe();
+        GrapheneProxiedAssetHandler truncated = fixture.handler(
+                (url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, 5, new ByteArrayInputStream(new byte[]{1, 2}))
+        );
+        truncated.start("GET", shortProbe);
+        shortProbe.await();
+        assertEquals(502, truncated.status());
+        assertEquals(0, fixture.budget.usedBytes());
+    }
+
+    @Test
+    void anUnknownLengthIsReadUpToTheCapIntoAnExactArray() throws Exception {
+        Fixture fixture = new Fixture(1, 4, 64L * 1024 * 1024);
+        byte[] content = new byte[100_000];
+        content[99_999] = 7;
+        Probe probe = new Probe();
+        GrapheneProxiedAssetHandler handler = fixture.handler(
+                (url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, -1, new ByteArrayInputStream(content))
+        );
+        handler.start("GET", probe);
+        probe.await();
+        assertEquals(200, handler.status());
+        assertEquals(content.length, fixture.budget.usedBytes(), "the reservation was not trimmed to the body");
+        assertArrayEquals(content, drain(handler));
+
+        Probe tooLargeProbe = new Probe();
+        GrapheneProxiedAssetHandler tooLarge = fixture.handler(
+                (url, deadline) -> new GrapheneProxiedAssetHandler.Upstream(200, -1, new ByteArrayInputStream(new byte[GrapheneProxiedAssetHandler.MAX_BODY_BYTES + 1]))
+        );
+        tooLarge.start("GET", tooLargeProbe);
+        tooLargeProbe.await();
+        assertEquals(502, tooLarge.status());
+        assertEquals(0, fixture.budget.usedBytes());
     }
 
     @Test
     void aThumbnailGridNeverGets503() throws Exception {
-        GrapheneProxyQueue queue = new GrapheneProxyQueue(
-                GrapheneProxiedAssetHandler.MAX_RUNNING,
+        Fixture fixture = new Fixture(
+                GrapheneProxiedAssetHandler.WORKERS,
                 GrapheneProxiedAssetHandler.MAX_QUEUED,
-                POOL
+                GrapheneProxiedAssetHandler.BUDGET_BYTES
         );
         List<GrapheneProxiedAssetHandler> handlers = new ArrayList<>();
         List<Probe> probes = new ArrayList<>();
         for (int index = 0; index < 300; index++) {
-            int tile = index;
-            GrapheneProxiedAssetHandler handler = handler(url -> later(5 + tile % 7, tile), queue, LONG);
+            byte[] tile = new byte[2048];
+            GrapheneProxiedAssetHandler handler = fixture.handler((url, deadline) -> {
+                Thread.sleep(5);
+                return new GrapheneProxiedAssetHandler.Upstream(200, tile.length, new ByteArrayInputStream(tile));
+            });
             Probe probe = new Probe(handler);
             handlers.add(handler);
             probes.add(probe);
@@ -303,107 +264,12 @@ final class GrapheneProxiedAssetHandlerTest {
         for (GrapheneProxiedAssetHandler handler : handlers) {
             assertEquals(200, handler.status());
         }
-        assertEquals(GrapheneProxiedAssetHandler.MAX_RUNNING, queue.peakRunning());
-        assertTrue(queue.peakWaiting() > 0, "the grid never queued");
-        awaitIdle(queue);
-    }
-
-    @Test
-    void failuresAndOversizedBodiesAreLocalErrorsAndOtherMethodsAreRefused() throws Exception {
-        GrapheneProxyQueue queue = queue(1, 4);
-        Probe failed = new Probe();
-        GrapheneProxiedAssetHandler failing = handler(url -> CompletableFuture.failedFuture(new IllegalStateException("down")), queue, LONG);
-        failing.start("GET", failed);
-        failed.await();
-        assertEquals(502, failing.status());
-
-        Probe oversized = new Probe();
-        GrapheneProxiedAssetHandler tooLarge = handler(url -> CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(200, null)), queue, LONG);
-        tooLarge.start("GET", oversized);
-        oversized.await();
-        assertEquals(502, tooLarge.status());
-
-        Probe notFound = new Probe();
-        GrapheneProxiedAssetHandler missing = handler(url -> CompletableFuture.completedFuture(new GrapheneProxiedAssetHandler.Fetched(404, null)), queue, LONG);
-        missing.start("GET", notFound);
-        notFound.await();
-        assertEquals(404, missing.status());
-        awaitIdle(queue);
-
-        AtomicInteger fetches = new AtomicInteger();
-        Probe posted = new Probe();
-        GrapheneProxiedAssetHandler post = handler(url -> {
-            fetches.incrementAndGet();
-            return new CompletableFuture<>();
-        }, queue, LONG);
-        post.start("POST", posted);
-        posted.await();
-        assertEquals(405, post.status());
-        assertEquals(0, fetches.get());
-    }
-
-    @Test
-    void theBodyReaderStopsAtItsCapAndAtMost128MebibytesAreEverBuffered() {
-        assertEquals(8 * 1024 * 1024, GrapheneProxiedAssetHandler.MAX_BODY_BYTES);
-        assertTrue((long) GrapheneProxiedAssetHandler.MAX_BODY_BYTES * GrapheneProxiedAssetHandler.MAX_RUNNING <= 128L * 1024 * 1024);
-
-        GrapheneProxiedAssetHandler.CappedBodySubscriber small = new GrapheneProxiedAssetHandler.CappedBodySubscriber(4);
-        small.onSubscribe(new RecordingSubscription());
-        small.onNext(List.of(ByteBuffer.wrap(new byte[]{1, 2}), ByteBuffer.wrap(new byte[]{3})));
-        small.onComplete();
-        assertArrayEquals(new byte[]{1, 2, 3}, small.getBody().toCompletableFuture().join());
-
-        RecordingSubscription subscription = new RecordingSubscription();
-        GrapheneProxiedAssetHandler.CappedBodySubscriber large = new GrapheneProxiedAssetHandler.CappedBodySubscriber(4);
-        large.onSubscribe(subscription);
-        large.onNext(List.of(ByteBuffer.wrap(new byte[]{1, 2, 3}), ByteBuffer.wrap(new byte[]{4, 5})));
-        assertNull(large.getBody().toCompletableFuture().join());
-        assertTrue(subscription.cancelled);
-    }
-
-    @Test
-    void aBodyDeclaredTooLargeOrNotOkIsStoppedAtTheHeadersUnread() {
-        for (ResponseInfo info : List.of(
-                new ResponseInfo(200, GrapheneProxiedAssetHandler.MAX_BODY_BYTES + 1L),
-                new ResponseInfo(500, 10L),
-                new ResponseInfo(404, -1L)
-        )) {
-            RecordingSubscription subscription = new RecordingSubscription();
-            HttpResponse.BodySubscriber<byte[]> subscriber = GrapheneProxiedAssetHandler.cappedBody(info);
-            subscriber.onSubscribe(subscription);
-            assertTrue(subscription.cancelled, info + " was not stopped at the headers");
-            assertEquals(0L, subscription.requested, info + " asked for its body");
-            assertNull(subscriber.getBody().toCompletableFuture().join());
-        }
-
-        RecordingSubscription normal = new RecordingSubscription();
-        GrapheneProxiedAssetHandler.cappedBody(new ResponseInfo(200, 1000L)).onSubscribe(normal);
-        assertFalse(normal.cancelled);
-        assertTrue(normal.requested > 0);
-    }
-
-    private static GrapheneProxiedAssetHandler handler(
-            Function<String, CompletableFuture<GrapheneProxiedAssetHandler.Fetched>> fetcher,
-            GrapheneProxyQueue queue,
-            Duration deadline
-    ) {
-        return new GrapheneProxiedAssetHandler(URL, fetcher, queue, POOL, deadline);
-    }
-
-    private static GrapheneProxyQueue queue(int maxRunning, int maxQueued) {
-        return new GrapheneProxyQueue(maxRunning, maxQueued, POOL);
-    }
-
-    private static CompletableFuture<GrapheneProxiedAssetHandler.Fetched> later(long millis, int marker) {
-        return CompletableFuture.supplyAsync(
-                () -> new GrapheneProxiedAssetHandler.Fetched(200, new byte[]{(byte) marker}),
-                CompletableFuture.delayedExecutor(millis, TimeUnit.MILLISECONDS)
-        );
+        assertEquals(0, fixture.budget.usedBytes());
     }
 
     private static byte[] drain(GrapheneProxiedAssetHandler handler) {
         List<Byte> bytes = new ArrayList<>();
-        byte[] buffer = new byte[2];
+        byte[] buffer = new byte[3];
         IntRef read = new IntRef();
         while (handler.readResponse(buffer, buffer.length, read, null)) {
             for (int index = 0; index < read.get(); index++) {
@@ -430,14 +296,6 @@ final class GrapheneProxiedAssetHandlerTest {
         }
     }
 
-    private static void await(CountDownLatch latch) {
-        try {
-            latch.await(5, TimeUnit.SECONDS);
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
     private static void eventually(BooleanSupplier condition) throws InterruptedException {
         for (int attempt = 0; attempt < 500 && !condition.getAsBoolean(); attempt++) {
             Thread.sleep(10);
@@ -446,13 +304,26 @@ final class GrapheneProxiedAssetHandlerTest {
         assertTrue(condition.getAsBoolean(), "a condition never became true");
     }
 
-    private static void awaitIdle(GrapheneProxyQueue queue) throws InterruptedException {
-        for (int attempt = 0; attempt < 500 && (queue.running() > 0 || queue.waiting() > 0); attempt++) {
-            Thread.sleep(10);
+    private static final class Fixture {
+        private final ThreadPoolExecutor pool;
+        private final GrapheneProxyBodyBudget budget;
+        private final Duration deadline;
+        private final Duration deliveryDeadline;
+
+        private Fixture(int workers, int maxQueued, long budgetBytes) {
+            this(workers, maxQueued, budgetBytes, LONG, LONG);
         }
 
-        assertEquals(0, queue.running(), "a slot was never given back");
-        assertEquals(0, queue.waiting());
+        private Fixture(int workers, int maxQueued, long budgetBytes, Duration deadline, Duration deliveryDeadline) {
+            this.pool = GrapheneProxiedAssetHandler.workerPool(workers, maxQueued);
+            this.budget = new GrapheneProxyBodyBudget(budgetBytes);
+            this.deadline = deadline;
+            this.deliveryDeadline = deliveryDeadline;
+        }
+
+        private GrapheneProxiedAssetHandler handler(GrapheneProxiedAssetHandler.Opener opener) {
+            return new GrapheneProxiedAssetHandler(URL, opener, pool, TIMER, budget, deadline, deliveryDeadline);
+        }
     }
 
     private static final class Probe implements Runnable {
@@ -484,33 +355,72 @@ final class GrapheneProxiedAssetHandlerTest {
         }
     }
 
-    private static final class RecordingSubscription implements Flow.Subscription {
-        private boolean cancelled;
-        private long requested;
+    /** A body that never arrives: reads block until the stream is closed, then fail. */
+    private static final class BlockingStream extends InputStream {
+        private final CountDownLatch reading = new CountDownLatch(1);
+        private final CountDownLatch closedLatch = new CountDownLatch(1);
+        private final Runnable onClose;
+        private volatile boolean closed;
 
-        @Override
-        public void request(long count) {
-            requested += count;
+        private BlockingStream() {
+            this(() -> {
+            });
+        }
+
+        private BlockingStream(Runnable onClose) {
+            this.onClose = onClose;
         }
 
         @Override
-        public void cancel() {
-            cancelled = true;
+        public int read() throws IOException {
+            reading.countDown();
+            try {
+                closedLatch.await(30, TimeUnit.SECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IOException("interrupted", interrupted);
+            }
+            throw new IOException("closed");
+        }
+
+        @Override
+        public int read(byte[] buffer, int offset, int length) throws IOException {
+            return read();
+        }
+
+        @Override
+        public void close() {
+            if (!closed) {
+                closed = true;
+                onClose.run();
+                closedLatch.countDown();
+            }
         }
     }
 
-    private record ResponseInfo(int statusCode, long contentLength) implements HttpResponse.ResponseInfo {
-        @Override
-        public HttpHeaders headers() {
-            Map<String, List<String>> headers = contentLength < 0
-                    ? Map.of()
-                    : Map.of("content-length", List.of(Long.toString(contentLength)));
-            return HttpHeaders.of(headers, (ignoredName, ignoredValue) -> true);
+    private static final class CountingStream extends ByteArrayInputStream {
+        private final AtomicInteger reads = new AtomicInteger();
+        private volatile boolean closed;
+
+        private CountingStream(byte[] content) {
+            super(content);
         }
 
         @Override
-        public HttpClient.Version version() {
-            return HttpClient.Version.HTTP_1_1;
+        public synchronized int read() {
+            reads.incrementAndGet();
+            return super.read();
+        }
+
+        @Override
+        public synchronized int read(byte[] buffer, int offset, int length) {
+            reads.incrementAndGet();
+            return super.read(buffer, offset, length);
+        }
+
+        @Override
+        public void close() {
+            closed = true;
         }
     }
 }
