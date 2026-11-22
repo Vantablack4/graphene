@@ -107,6 +107,25 @@ unhandle();
 - On navigation or page load start, readiness resets and pending Java requests fail.
 - On close/detach, handlers, queue state, and pending requests are cleared.
 
+## Who May Call The Bridge
+
+- Only the main frame may call. Calls from iframes are refused, also when they come from the same origin.
+- Only pages from an origin that Java loaded into the surface may call: the builder's `url(...)` and every
+  `loadUrl(...)`. Where the page then navigates on its own (links, `location`, redirects) counts only if it stays
+  on one of those origins. Origins are compared in canonical form (lower-case scheme and host, default port dropped)
+  for http, https and Graphene's `app` and `classpath` schemes; a URL with any other scheme (`about:`, `data:`,
+  `blob:`, `file:` ...) or a non-ASCII host has no origin, so a main frame showing one never gets the bridge.
+- A refused call fails at once with CEF error code `403`; it never reaches a handler, and the page never becomes ready.
+- Scope of the frame check: CEF reports the frame whose JavaScript context runs `cefQuery`. A frame on another origin
+  cannot reach its parent's context, so it can only call as itself and is refused. A frame on the page's own origin
+  can call `window.parent.cefQuery`, which runs in the parent's context and counts as the page; that includes
+  `about:blank`, `srcdoc` and `blob:` frames the page creates, because they share its origin. So only the page's own
+  content may live on a trusted origin: the jar (`app://`), the local HTTP server, or an origin Graphene owns through
+  [bundled pages](assets-and-urls.md#bundled-pages-on-an-owned-origin).
+- `window.open` and other popups are cancelled and never load into the surface. `bridge.js` still turns the main
+  frame's own `window.open` and `target="_blank"` links into a navigation of the page, which the origin rule then covers.
+- A link opened as a new tab (middle click) navigates the surface only when the main frame opened it.
+
 ## Error Codes
 
 Common codes returned by bridge request failures:

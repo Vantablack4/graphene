@@ -25,6 +25,7 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
     private static final String TIMEOUT_NAME = "timeout";
     private static final String SCRIPT_NAME = "script";
     private static final long BOOTSTRAP_FALLBACK_RETRY_NANOS = TimeUnit.MILLISECONDS.toNanos(500);
+    private static final int REFUSED_CALLER_ERROR_CODE = 403;
 
     private final GrapheneBridgeOptions options;
     private final GrapheneBridgeMessageCodec codec;
@@ -32,6 +33,7 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
     private final GrapheneBridgeOutboundQueue outboundQueue;
     private final GrapheneBridgeRequestLifecycle requestLifecycle;
     private final GrapheneBridgeInboundRouter inboundRouter;
+    private final GrapheneBridgeCallerPolicy callerPolicy = new GrapheneBridgeCallerPolicy();
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private volatile GrapheneBrowser browser;
     private volatile boolean awaitingFirstPage;
@@ -233,9 +235,24 @@ public final class GrapheneBridgeEndpoint implements GrapheneBridge {
         }
     }
 
-    public boolean handleQuery(String requestJson, CefQueryCallback callback) {
+    /**
+     * Lets pages from the origin of {@code pageUrl} call this bridge. Only URLs that Java loads into the surface are
+     * trusted; where the page navigates on its own does not count.
+     */
+    public void trustPage(String pageUrl) {
+        callerPolicy.trust(pageUrl);
+    }
+
+    public boolean handleQuery(String requestJson, CefQueryCallback callback, boolean mainFrame, String frameUrl) {
         if (closed.get()) {
             return false;
+        }
+
+        GrapheneBridgeCallerPolicy.Decision decision = callerPolicy.decide(mainFrame, frameUrl);
+        if (!decision.allowed()) {
+            callback.failure(REFUSED_CALLER_ERROR_CODE, "Graphene bridge refused the call: " + decision);
+            DEBUG_LOGGER.debug("Refused bridge query browserId={} decision={} frameUrl={}", browserIdentifier(), decision, frameUrl);
+            return true;
         }
 
         boolean handled = inboundRouter.route(requestJson, callback);

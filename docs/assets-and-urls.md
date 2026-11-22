@@ -122,6 +122,50 @@ Important behavior:
 - Successful HTTP assets advertise byte-range support. Single `bytes=` ranges return `206 Partial Content`, which lets
   Chromium seek and stream bundled media without downloading the whole file first.
 
+## Bundled Pages On An Owned Origin
+
+A page that needs a web origin (for example to read remote data without CORS and draw it on a canvas it can export)
+can run on an origin Graphene owns entirely, with its code from the jar and its remote data through a read-only proxy:
+
+```java
+GrapheneCore.register(MyMod.class, GrapheneConfig.builder()
+        .container(GrapheneContainerConfig.builder()
+                .bundledPages("https://my-mod.graphene.invalid/page/", "assets/my_mod/web/page/")
+                .proxiedAssets("https://my-mod.graphene.invalid/cdn/", "https://cdn.example.com/my-mod/",
+                        Set.of("json", "webp", "png"))
+                .build())
+        .build());
+```
+
+- Every request under a `bundledPages` prefix is answered from the jar directory (a path ending in `/` serves
+  `index.html`).
+- Every request under a `proxiedAssets` prefix is fetched by Java from the upstream directory plus the same path:
+  GET only, the listed extensions only (never HTML, SVG, XML, scripts, styles, WebAssembly or PDF), a plain path
+  (letters, digits, `.`, `_`, `-`, no dot segments, no percent escapes, no query, at most 512 characters), nothing
+  forwarded from the page (no cookies, headers or query), no redirects.
+- Each proxied request is a plain blocking GET on one of 16 dedicated `graphene-proxy-N` threads; up to 512 more
+  wait in the pool's queue, and only beyond that does a request get a local 503. The thread is the request's slot: it
+  reads the whole body (at most 8 MiB, refused at the headers when declared larger; non-200 answers are not read)
+  within 30 seconds of starting, closes the upstream stream, and frees the slot by returning. A request CEF cancels
+  leaves the queue, or has its stream closed if it is reading.
+- Every byte a body holds, while it is read and until CEF has taken it, comes out of one 160 MiB budget reserved
+  before reading (the declared length, or 16 MiB while a body of unknown length is read); a request that does not fit
+  gets a local 503. A body is dropped as soon as CEF has copied its last byte, on a cancel, or 60 seconds after it was
+  ready if CEF stops reading.
+- An upstream 404 is a local 404, a missed deadline a local 504, and any other answer or failure a local 502. Every
+  answer is issued from a proxy thread (or the proxy's timer thread for a local refusal), never from CEF's thread.
+- The response type comes from the extension and carries `X-Content-Type-Options: nosniff` and
+  `Content-Security-Policy: sandbox` (a subresource ignores that CSP, so fonts, images and JSON still load; a proxied
+  file opened as a document cannot run anything).
+- Every other request on the origin, and any path that tries to leave a mount, is answered with a local error and
+  never reaches the network.
+- The origin must be `https` on a host ending in `.invalid` (RFC 6761 reserves it; it never resolves), with no port.
+  Registration refuses any other host. So a request Graphene never sees (one with no browser, a WebSocket, a
+  service worker, which a reserved host can never have registered) fails on DNS instead of reaching a server.
+
+Because only the mods' own content lives on the origin, the bridge trusts it like any other page origin (see
+[Who May Call The Bridge](bridge.md#who-may-call-the-bridge)). Register before Graphene starts, like the HTTP mode.
+
 ## Recommendations
 
 - Keep web assets under `assets/<mod-id>/web/...`.

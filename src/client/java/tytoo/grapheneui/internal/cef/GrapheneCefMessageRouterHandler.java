@@ -35,12 +35,15 @@ final class GrapheneCefMessageRouterHandler extends CefMessageRouterHandlerAdapt
             boolean persistent,
             CefQueryCallback callback
     ) {
-        boolean handled = bridgeRuntime.onQuery(browser, request, callback);
+        boolean mainFrame = frame != null && frame.isMain();
+        String frameUrl = frame == null ? null : frame.getURL();
+        boolean handled = bridgeRuntime.onQuery(browser, mainFrame, frameUrl, request, callback);
         DEBUG_LOGGER.debugIfEnabled(logger -> {
             int requestSize = request == null ? 0 : request.length();
             logger.debug(
-                    "CEF query browserId={} queryId={} persistent={} requestSize={} handled={}",
+                    "CEF query browserId={} mainFrame={} queryId={} persistent={} requestSize={} handled={}",
                     browserIdentifier(browser),
+                    mainFrame,
                     queryId,
                     persistent,
                     requestSize,

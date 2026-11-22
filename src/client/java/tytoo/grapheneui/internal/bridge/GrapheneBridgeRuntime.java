@@ -135,14 +135,14 @@ public final class GrapheneBridgeRuntime {
         DEBUG_LOGGER.debug("Bridge ensureBootstrap browserId={}", browserIdentifier(browser));
     }
 
-    public boolean onQuery(CefBrowser browser, String request, CefQueryCallback callback) {
+    public boolean onQuery(CefBrowser browser, boolean mainFrame, String frameUrl, String request, CefQueryCallback callback) {
         GrapheneBridgeEndpoint endpoint = endpoint(browser);
         if (endpoint == null) {
             DEBUG_LOGGER.debug("Bridge query ignored because endpoint is missing browserId={}", browserIdentifier(browser));
             return false;
         }
 
-        boolean handled = endpoint.handleQuery(request, callback);
+        boolean handled = endpoint.handleQuery(request, callback, mainFrame, frameUrl);
         DEBUG_LOGGER.debugIfEnabled(logger -> {
             int requestSize = request == null ? 0 : request.length();
             logger.debug(

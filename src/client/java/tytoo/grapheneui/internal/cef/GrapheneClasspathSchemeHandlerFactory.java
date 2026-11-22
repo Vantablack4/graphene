@@ -29,6 +29,7 @@ public final class GrapheneClasspathSchemeHandlerFactory implements CefSchemeHan
     private static final String PATH_DELIMITER = "/";
     private static final String ASSETS_PREFIX = "assets" + PATH_DELIMITER;
     private static final String OPAQUE_ORIGIN = "null";
+    private static final String REFUSED_RESOURCE_PATH = "";
 
     static String opaqueCorsOriginFor(String requestUrl, boolean resourceFound) {
         if (!resourceFound || GrapheneAppUrls.normalizeResourcePath(requestUrl).isBlank()) {
@@ -38,20 +39,33 @@ public final class GrapheneClasspathSchemeHandlerFactory implements CefSchemeHan
         return OPAQUE_ORIGIN;
     }
 
+    static CefResourceHandler bundledResource(String resourcePath) {
+        return new ClasspathResourceHandler(resourcePath);
+    }
+
+    static CefResourceHandler refusedResource() {
+        return new ClasspathResourceHandler(REFUSED_RESOURCE_PATH);
+    }
+
     @Override
     public CefResourceHandler create(CefBrowser browser, CefFrame frame, String schemeName, CefRequest request) {
-        return new ClasspathResourceHandler();
+        return new ClasspathResourceHandler(null);
     }
 
     private static final class ClasspathResourceHandler extends CefResourceHandlerAdapter {
         private static final String ASSETS_FALLBACK_PREFIX = ASSETS_PREFIX + GrapheneCore.ID + PATH_DELIMITER;
         private static final String ACCESS_CONTROL_ALLOW_ORIGIN = "Access-Control-Allow-Origin";
         private static final byte[] EMPTY_RESPONSE_BYTES = new byte[0];
+        private final String fixedResourcePath;
         private byte[] responseBytes = EMPTY_RESPONSE_BYTES;
         private int readOffset;
         private boolean resourceFound;
         private String corsAllowOrigin;
         private String mimeType = MIME_TEXT_PLAIN;
+
+        private ClasspathResourceHandler(String fixedResourcePath) {
+            this.fixedResourcePath = fixedResourcePath;
+        }
 
         private static String resolveMimeType(String path) {
             return GrapheneMimeTypes.resolve(path);
@@ -92,15 +106,17 @@ public final class GrapheneClasspathSchemeHandlerFactory implements CefSchemeHan
         @Override
         public boolean processRequest(CefRequest request, CefCallback callback) {
             String requestUrl = request.getURL();
-            String resourcePath = normalizeResourcePath(requestUrl);
+            String resourcePath = fixedResourcePath != null ? fixedResourcePath : normalizeResourcePath(requestUrl);
             long startedAt = System.nanoTime();
-            ResourceBytesResult resourceBytesResult = readResourceBytes(resourcePath);
+            ResourceBytesResult resourceBytesResult = REFUSED_RESOURCE_PATH.equals(fixedResourcePath)
+                    ? ResourceBytesResult.notFound()
+                    : readResourceBytes(resourcePath);
             if (GrapheneOpenTrace.isActive()) {
                 GrapheneOpenTrace.mark(null, "resource.read", resourcePath + " " + (System.nanoTime() - startedAt) / 1_000_000.0D + "ms");
             }
             responseBytes = resourceBytesResult.bytes();
             resourceFound = resourceBytesResult.found();
-            corsAllowOrigin = opaqueCorsOriginFor(requestUrl, resourceFound);
+            corsAllowOrigin = fixedResourcePath != null ? null : opaqueCorsOriginFor(requestUrl, resourceFound);
             readOffset = 0;
             if (!resourceFound) {
                 DEBUG_LOGGER.debug("Classpath resource not found: {}", resourcePath);

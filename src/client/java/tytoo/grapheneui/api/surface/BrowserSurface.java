@@ -110,6 +110,7 @@ public final class BrowserSurface implements AutoCloseable {
 
         GrapheneCefRuntime runtime = services.runtimeInternal();
         this.bridge = runtime.createBridge();
+        this.bridge.trustPage(builder.url);
         this.nativeSlots = new GrapheneNativeSlotRegistry(this.bridge);
         this.loadListenerScope = new BrowserSurfaceLoadListenerScope(runtime.getLoadEventBus());
         this.loadListenerScope.add(new GrapheneLoadListener() {
@@ -239,6 +240,7 @@ public final class BrowserSurface implements AutoCloseable {
 
     public void loadUrl(String url) {
         String validatedUrl = Objects.requireNonNull(url, "url");
+        bridge.trustPage(validatedUrl);
         nativeSlots.clearPageSlots();
         GrapheneBrowser activeBrowser = browser;
         if (activeBrowser == null) {

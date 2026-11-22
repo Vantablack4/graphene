@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Same-origin frame</title>
+</head>
+<body>
+<script>
+  const call = { bridge: "graphene-ui", version: 1, kind: "event", channel: "test:frame", payload: { from: "same" } };
+
+  function answer(result) {
+    parent.postMessage(Object.assign({ frame: "same" }, result), "*");
+  }
+
+  try {
+    window.cefQuery({
+      request: JSON.stringify(call),
+      onSuccess: function () { answer({ ok: true }); },
+      onFailure: function (code, message) { answer({ ok: false, code: code, message: message }); }
+    });
+  } catch (error) {
+    answer({ ok: false, code: -1, message: String(error) });
+  }
+
+  try {
+    window.open("popup.html", "_blank");
+  } catch (ignored) {
+    // A blocked popup may throw; the test only checks that it never loads.
+  }
+</script>
+</body>
+</html>
