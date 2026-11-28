@@ -78,7 +78,7 @@ public final class GrapheneCefInstaller {
         cefAppBuilder.addJcefArgs(RENDERING_ARGS.toArray(String[]::new));
 
         try {
-            Path cacheDirectory = Files.createDirectories(installPath.resolve(cacheDirectoryName()));
+            Path cacheDirectory = Files.createDirectories(installPath.resolve("cache"));
             GrapheneCefComponentCache.prune(cacheDirectory);
             String cachePath = cacheDirectory.toAbsolutePath().toString();
             cefAppBuilder.getCefSettings().cache_path = cachePath;
@@ -87,8 +87,7 @@ public final class GrapheneCefInstaller {
             throw new IllegalStateException("Failed to create Graphene CEF cache directory", exception);
         }
 
-        cefAppBuilder.getCefSettings().log_file = installPath.resolve(cacheDirectoryName().equals("cache")
-            ? "logs.txt" : cacheDirectoryName() + "-logs.txt").toAbsolutePath().toString();
+        cefAppBuilder.getCefSettings().log_file = installPath.resolve("logs.txt").toAbsolutePath().toString();
         cefAppBuilder.getCefSettings().log_severity = CefSettings.LogSeverity.LOGSEVERITY_WARNING;
         cefAppBuilder.getCefSettings().windowless_rendering_enabled = true;
 
@@ -325,15 +324,5 @@ public final class GrapheneCefInstaller {
         } catch (IOException ignored) {
             return 9222;
         }
-    }
-
-    /**
-     * Chromium locks its cache directory for one process. A second game started on the same game
-     * directory (the Vantablack launcher's update client, which takes over from the running game)
-     * names its own with {@code -Dgraphene.cacheName}.
-     */
-    static String cacheDirectoryName() {
-        String name = System.getProperty("graphene.cacheName", "cache");
-        return name.matches("[A-Za-z0-9._-]{1,64}") ? name : "cache";
     }
 }
